@@ -16,6 +16,7 @@ import android.util.Log;
 
 import com.example.myapplication.services.MyService;
 import com.example.myapplication.services.NotificationService;
+import com.example.myapplication.utils.BluetoothHelper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.List;
 import static android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;
 
 public class MainActivity extends AppCompatActivity {
+
 
     private static final int ENABLE_BLUETOOTH_REQUEST = 1;  // The request code
     private static final int ENABLE_LOCATION_REQUEST = 2;  // The request code
@@ -68,10 +70,9 @@ public class MainActivity extends AppCompatActivity {
 //            requestPermissions(permissions.toArray(new String[0]), NOTIFICATION_PERMISSION_CODE);
 //        }
 
-        // Send notification to the BLE service to send the message to remote _device.
-        Intent intent = new Intent(this, MyService.class);
-        ComponentName service = startService(intent);
-        Log.i("MainActivity.onCreateView:service=", (service != null) ? service.toString() : "null");
+        BluetoothHelper ble = BluetoothHelper.getInstance();
+        ble.setArguments(getApplication().getApplicationContext());
+        ble.init();
     }
 
     /**

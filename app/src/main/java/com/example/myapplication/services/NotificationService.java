@@ -63,7 +63,7 @@ public class NotificationService extends NotificationListenerService {
         // Send notification to the BLE service to send the message to remote _device.
         Intent intent = new Intent(this, MyService.class);
         ComponentName service = startService(intent);
-        Log.i("NotificationService.onNotificationPosted:service=", (service != null) ? service.toString() : "null");
+        Log.i("MainActivity.onCreateView:service=", (service != null) ? service.toString() : "null");
     }
 
     @Override
