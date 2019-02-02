@@ -13,8 +13,10 @@ import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
@@ -28,6 +30,7 @@ public class BluetoothHelper {
 
     public final static String ACTION_GATT_SERVICES_DISCOVERED =
             "com.example.bluetooth.le.ACTION_GATT_SERVICES_DISCOVERED";
+    private final static String MACAddress = "E9:0C:48:22:6A:AC";
 
     private static final BluetoothHelper instance = new BluetoothHelper();
 
@@ -37,7 +40,7 @@ public class BluetoothHelper {
     private BluetoothLeScanner mBleScanner;
     private Context mAppContext;
     private ScanSettings settings;
-    private List<ScanFilter> filters;
+    private List<ScanFilter> filtersList;
     private BluetoothGatt mGatt;
 
     // Stops scanning after 10 seconds.
@@ -79,11 +82,24 @@ public class BluetoothHelper {
 
         if (Build.VERSION.SDK_INT >= 21) {
             mBleScanner = mBluetoothAdapter.getBluetoothLeScanner();
+
+            // Scan only for fixed MACAddress
+            filtersList = new ArrayList<>();
+            ScanFilter.Builder builder = new ScanFilter.Builder();
+            builder.setDeviceAddress(MACAddress);
+            filtersList.add(builder.build());
+
             settings = new ScanSettings.Builder()
                     .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                     .build();
-            filters = new ArrayList<ScanFilter>();
         }
+
+        // Actually set it in response to ACTION_PAIRING_REQUEST.
+        final IntentFilter pairingRequestFilter = new IntentFilter();
+        pairingRequestFilter.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
+        pairingRequestFilter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+        pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
+        mAppContext.registerReceiver(mPairingRequestReceiver, pairingRequestFilter);
 
         mHandler = new Handler();
         scanLeDevice(true);
@@ -148,7 +164,7 @@ public class BluetoothHelper {
                 mBluetoothAdapter.startLeScan(mLeScanCallback);
             } else {
                 Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.startScan");
-                mBleScanner.startScan(filters, settings, mScanCallback);
+                mBleScanner.startScan(filtersList, settings, mScanCallback);
             }
         } else {
             if (Build.VERSION.SDK_INT < 21) {
@@ -169,9 +185,12 @@ public class BluetoothHelper {
             Log.i("result", result.toString());
             BluetoothDevice btDevice = result.getDevice();
             String devName = btDevice.getName();
+            String devAddress = btDevice.getAddress();
+            Log.i("BluetoothHelper", ".ScanCallback().onScanResult():devAddress="+devAddress);
             if (null != devName) {
                 Log.i("BluetoothHelper", ".ScanCallback().onScanResult():devName="+devName);
-                connectToDevice(btDevice);
+                btDevice.createBond();
+//                connectToDevice(btDevice);
             }
         }
 
@@ -285,10 +304,63 @@ public class BluetoothHelper {
         }
     };
 
-//    private void broadcastUpdate(final String action) {
-//        final Intent intent = new Intent(action);
-//        sendBroadcast(intent);
-//    }
+    private final BroadcastReceiver broadCastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if(BluetoothDevice.ACTION_PAIRING_REQUEST.equals(action))
+            {
+                BluetoothDevice bluetoothDevice = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                bluetoothDevice.createBond();
+                Log.e("broadCastReceiver:","createBond()");
+            }
+            else if(BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(action))
+            {
+                Log.e("broadCastReceiver:","BOND STATE CHANGED()");
+            }
+        }
+    };
+
+    private final BroadcastReceiver mPairingRequestReceiver = new BroadcastReceiver()
+    {
+        @Override
+        public void onReceive(Context context, Intent intent)
+        {
+            Log.i("mPairingRequestReceiver:","onReceive:" + intent.getAction());
+            if (BluetoothDevice.ACTION_PAIRING_REQUEST.equals(intent.getAction()))
+            {
+                final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                int type = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
+                Log.i("mPairingRequestReceiver:","onReceive:ACTION_PAIRING_REQUEST");
+            }
+            else if (BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(intent.getAction()))
+            {
+//                final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+//                int type = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
+//                Log.i("mPairingRequestReceiver:","onReceive:ACTION_BOND_STATE_CHANGED");
+
+                final int state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR);
+
+                switch(state){
+                    case BluetoothDevice.BOND_BONDING:
+                        // Bonding...
+                        Log.i("mPairingRequestReceiver:","onReceive:Bonding...");
+                        break;
+
+                    case BluetoothDevice.BOND_BONDED:
+                        // Bonded...
+                        Log.i("mPairingRequestReceiver:","onReceive:Bonded...");
+                        mAppContext.unregisterReceiver(mPairingRequestReceiver);
+                        break;
+
+                    case BluetoothDevice.BOND_NONE:
+                        Log.i("mPairingRequestReceiver:","onReceive:Not bonded...");
+                        // Not bonded...
+                        break;
+                }
+            }
+        }
+    };
 
     public static byte[] hexStringToByteArray(String s) {
         int len = s.length();
