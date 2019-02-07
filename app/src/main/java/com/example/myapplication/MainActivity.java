@@ -26,53 +26,47 @@ import static android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;
 public class MainActivity extends AppCompatActivity {
 
 
-    private static final int ENABLE_BLUETOOTH_REQUEST = 1;  // The request code
-    private static final int ENABLE_LOCATION_REQUEST = 2;  // The request code
-    private static final int NOTIFICATION_PERMISSION_CODE = 123;
-
-
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Initializes Bluetooth adapter.
-        final BluetoothManager bluetoothManager =
-                (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-        BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
-
-        // Ensures Bluetooth is available on the _device and it is enabled. If not,
-        // displays a dialog requesting user permission to enable Bluetooth.
-        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
-            Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-            startActivityForResult(enableIntent, ENABLE_BLUETOOTH_REQUEST);
-        }
-
-        List<String> permissions = isLocationPermissionsEnabled();
-        if (permissions.size() > 0)
-        {
-            requestPermissions(permissions.toArray(new String[0]), ENABLE_LOCATION_REQUEST);
-        }
-
-        permissions = isBLEPermissionsEnabled();
-        if (permissions.size() > 0)
-        {
-            requestPermissions(permissions.toArray(new String[0]), ENABLE_BLUETOOTH_REQUEST);
-        }
+//        // Initializes Bluetooth adapter.
+//        final BluetoothManager bluetoothManager =
+//                (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+//        BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
+//
+//        // Ensures Bluetooth is available on the _device and it is enabled. If not,
+//        // displays a dialog requesting user permission to enable Bluetooth.
+//        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
+//            Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+//            startActivityForResult(enableIntent, ENABLE_BLUETOOTH_REQUEST);
+//        }
+//
+//        List<String> permissions = isLocationPermissionsEnabled();
+//        if (permissions.size() > 0)
+//        {
+//            requestPermissions(permissions.toArray(new String[0]), ENABLE_LOCATION_REQUEST);
+//        }
+//
+//        permissions = isBLEPermissionsEnabled();
+//        if (permissions.size() > 0)
+//        {
+//            requestPermissions(permissions.toArray(new String[0]), ENABLE_BLUETOOTH_REQUEST);
+//        }
 
 //        enableNotificationListenerService(getApplicationContext());
 
 //        permissions = isNotificationPermissionsEnabled();
 //        if (permissions.size() > 0) {
-            startActivity(new Intent(ACTION_NOTIFICATION_LISTENER_SETTINGS));
+//            startActivity(new Intent(ACTION_NOTIFICATION_LISTENER_SETTINGS));
 
 //            requestPermissions(permissions.toArray(new String[0]), NOTIFICATION_PERMISSION_CODE);
 //        }
 
         BluetoothHelper ble = BluetoothHelper.getInstance();
-        ble.setArguments(getApplication().getApplicationContext());
-        ble.init();
+        ble.setArguments(this);
+        ble.startScan();
     }
 
     /**

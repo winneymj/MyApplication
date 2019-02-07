@@ -1,5 +1,7 @@
 package com.example.myapplication.utils;
 
+import android.Manifest;
+import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -14,6 +16,7 @@ import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -21,12 +24,24 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.service.notification.NotificationListenerService;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
+
+import com.example.myapplication.services.NotificationService;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import static android.bluetooth.BluetoothDevice.BOND_BONDED;
+import static android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;
+
 public class BluetoothHelper {
+
+    private static final int ENABLE_BLUETOOTH_REQUEST = 1;  // The request code
+    private static final int ENABLE_LOCATION_REQUEST = 2;  // The request code
+    private static final int ENABLE_NOTIFICATION_REQUEST = 3;  // The request code
+    private static final int NOTIFICATION_PERMISSION_CODE = 123;
 
     public final static String ACTION_GATT_SERVICES_DISCOVERED =
             "com.example.bluetooth.le.ACTION_GATT_SERVICES_DISCOVERED";
@@ -39,6 +54,7 @@ public class BluetoothHelper {
     private Handler mHandler;
     private BluetoothLeScanner mBleScanner;
     private Context mAppContext;
+    private Activity mActivity;
     private ScanSettings settings;
     private List<ScanFilter> filtersList;
     private BluetoothGatt mGatt;
@@ -56,57 +72,116 @@ public class BluetoothHelper {
 
     }
 
-    public void setArguments(final Context appContext)
+    public void setArguments(final Activity activity)
     {
-        mAppContext = appContext;
+        mActivity = activity;
+        mAppContext = activity.getApplicationContext();
     }
 
-    public boolean init()
+    public boolean startScan()
     {
-        Log.i("BluetoothHelper", ".init():ENTER");
+        Log.i("BluetoothHelper", ".startScan():ENTER");
 
         // Initializes Bluetooth adapter.
         final BluetoothManager bluetoothManager =
                 (BluetoothManager) mAppContext.getSystemService(Context.BLUETOOTH_SERVICE);
         mBluetoothAdapter = bluetoothManager.getAdapter();
 
-        // Ensures Bluetooth is available on the _device and it is enabled. If not,
-        // displays a dialog requesting user permission to enable Bluetooth.
-        if (mBluetoothAdapter == null || !mBluetoothAdapter.isEnabled())
+        if (!hasPermissions())
         {
-//            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-//            activity.startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-            Log.i("BluetoothHelper", ".init() : no ble _device or not enabled");
             return false;
         }
 
-        if (Build.VERSION.SDK_INT >= 21) {
-            mBleScanner = mBluetoothAdapter.getBluetoothLeScanner();
+//
+//        // Ensures Bluetooth is available on the _device and it is enabled. If not,
+//        // displays a dialog requesting user permission to enable Bluetooth.
+//        if (mBluetoothAdapter == null || !mBluetoothAdapter.isEnabled())
+//        {
+////            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+////            activity.startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+//            Log.i("BluetoothHelper", ".init() : no ble _device or not enabled");
+//            return false;
+//        }
+//
+//        if (Build.VERSION.SDK_INT >= 21) {
+//            mBleScanner = mBluetoothAdapter.getBluetoothLeScanner();
+//
+//            // Scan only for fixed MACAddress
+//            filtersList = new ArrayList<>();
+//            ScanFilter.Builder builder = new ScanFilter.Builder();
+//            builder.setDeviceAddress(MACAddress);
+//            filtersList.add(builder.build());
+//
+//            settings = new ScanSettings.Builder()
+//                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+//                    .build();
+//        }
+//
+//        // Actually set it in response to ACTION_PAIRING_REQUEST.
+//        final IntentFilter pairingRequestFilter = new IntentFilter();
+//        pairingRequestFilter.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
+//        pairingRequestFilter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+//        pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
+//        mAppContext.registerReceiver(mPairingRequestReceiver, pairingRequestFilter);
+//
+//        mHandler = new Handler();
+//        scanLeDevice(true);
 
-            // Scan only for fixed MACAddress
-            filtersList = new ArrayList<>();
-            ScanFilter.Builder builder = new ScanFilter.Builder();
-            builder.setDeviceAddress(MACAddress);
-            filtersList.add(builder.build());
-
-            settings = new ScanSettings.Builder()
-                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                    .build();
-        }
-
-        // Actually set it in response to ACTION_PAIRING_REQUEST.
-        final IntentFilter pairingRequestFilter = new IntentFilter();
-        pairingRequestFilter.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
-        pairingRequestFilter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-        pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
-        mAppContext.registerReceiver(mPairingRequestReceiver, pairingRequestFilter);
-
-        mHandler = new Handler();
-        scanLeDevice(true);
-
-        Log.i("BluetoothHelper", ".init:EXIT");
+        Log.i("BluetoothHelper", ".startScan():EXIT");
 
         return true;
+    }
+
+    private boolean hasPermissions()
+    {
+        if (null == mBluetoothAdapter || !mBluetoothAdapter.isEnabled())
+        {
+            requestBluetoothEnable();
+            return false;
+        } else if (!hasLocationPermissions())
+        {
+            requestLocationPermission();
+            return false;
+        } else if (!hasNotificationPermissions())
+        {
+            requestNotificationPermission();
+            return false;
+        }
+
+        return true;
+    }
+
+    private void requestBluetoothEnable()
+    {
+        Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+        mActivity.startActivityForResult(enableIntent, ENABLE_BLUETOOTH_REQUEST);
+        Log.d("requestBluetoothEnable", "Request user enables bluetooth.  Try starting scan again");
+    }
+
+    private boolean hasLocationPermissions()
+    {
+        // Request permission from user to access location data so we can use BLE
+        return ContextCompat.checkSelfPermission(mAppContext, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestLocationPermission()
+    {
+        mActivity.requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, ENABLE_LOCATION_REQUEST);
+    }
+
+    private boolean hasNotificationPermissions()
+    {
+        // Request permission for notifications
+//        return ContextCompat.checkSelfPermission(mAppContext, Manifest.permission.ACCESS_NOTIFICATION_POLICY)
+//                == PackageManager.PERMISSION_GRANTED;
+        return false;
+    }
+
+    private void requestNotificationPermission()
+    {
+//        mActivity.requestPermissions(new String[]{Manifest.permission.ACCESS_NOTIFICATION_POLICY}, ENABLE_NOTIFICATION_REQUEST);
+        mActivity.startActivity(new Intent(ACTION_NOTIFICATION_LISTENER_SETTINGS));
     }
 
     public boolean verifyBleSupported()
@@ -187,11 +262,18 @@ public class BluetoothHelper {
             String devName = btDevice.getName();
             String devAddress = btDevice.getAddress();
             Log.i("BluetoothHelper", ".ScanCallback().onScanResult():devAddress="+devAddress);
-            if (null != devName) {
-                Log.i("BluetoothHelper", ".ScanCallback().onScanResult():devName="+devName);
-                btDevice.createBond();
-//                connectToDevice(btDevice);
+            Log.i("BluetoothHelper", ".ScanCallback().onScanResult():devName=" + devName);
+            // See if we are already bonded and do not create bond again
+            if (BOND_BONDED != btDevice.getBondState()) {
+                Log.i("BluetoothHelper", ".ScanCallback().onScanResult():NOT BOND_BONDED");
+                if (btDevice.createBond()) {
+                    Log.i("BluetoothHelper", ".ScanCallback().onScanResult():createBond Failed");
+                }
             }
+            else {
+                Log.i("BluetoothHelper", ".ScanCallback().onScanResult():ALREADY BONDED");
+                connectToDevice(btDevice);
+                }
         }
 
         @Override
@@ -238,7 +320,16 @@ public class BluetoothHelper {
         }
     }
 
+    /**
+     * This abstract class is used to implement BluetoothGatt callbacks.
+     */
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
+        /**
+         * Callback indicating when GATT client has connected/disconnected to/from a remote GATT server.
+         * @param gatt
+         * @param status
+         * @param newState
+         */
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             Log.i("BluetoothHelper", "onConnectionStateChange-Status: " + status);
@@ -304,23 +395,6 @@ public class BluetoothHelper {
         }
     };
 
-    private final BroadcastReceiver broadCastReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            if(BluetoothDevice.ACTION_PAIRING_REQUEST.equals(action))
-            {
-                BluetoothDevice bluetoothDevice = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                bluetoothDevice.createBond();
-                Log.e("broadCastReceiver:","createBond()");
-            }
-            else if(BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(action))
-            {
-                Log.e("broadCastReceiver:","BOND STATE CHANGED()");
-            }
-        }
-    };
-
     private final BroadcastReceiver mPairingRequestReceiver = new BroadcastReceiver()
     {
         @Override
@@ -335,7 +409,7 @@ public class BluetoothHelper {
             }
             else if (BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(intent.getAction()))
             {
-//                final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
 //                int type = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
 //                Log.i("mPairingRequestReceiver:","onReceive:ACTION_BOND_STATE_CHANGED");
 
@@ -347,10 +421,13 @@ public class BluetoothHelper {
                         Log.i("mPairingRequestReceiver:","onReceive:Bonding...");
                         break;
 
-                    case BluetoothDevice.BOND_BONDED:
+                    case BOND_BONDED:
                         // Bonded...
                         Log.i("mPairingRequestReceiver:","onReceive:Bonded...");
                         mAppContext.unregisterReceiver(mPairingRequestReceiver);
+
+                        // Now try connecting to device
+                        connectToDevice(device);
                         break;
 
                     case BluetoothDevice.BOND_NONE:
