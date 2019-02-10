@@ -57,16 +57,25 @@ public class MainActivity extends AppCompatActivity {
 
 //        enableNotificationListenerService(getApplicationContext());
 
-//        permissions = isNotificationPermissionsEnabled();
+//        List<String> permissions = isNotificationPermissionsEnabled();
 //        if (permissions.size() > 0) {
 //            startActivity(new Intent(ACTION_NOTIFICATION_LISTENER_SETTINGS));
-
-//            requestPermissions(permissions.toArray(new String[0]), NOTIFICATION_PERMISSION_CODE);
+//
+////            requestPermissions(permissions.toArray(new String[0]), NOTIFICATION_PERMISSION_CODE);
 //        }
 
         BluetoothHelper ble = BluetoothHelper.getInstance();
         ble.setArguments(this);
         ble.startScan();
+    }
+
+    private void toggleNotificationListenerService()
+    {
+        Log.d("MainActivity", "toggleNotificationListenerService() called");
+        ComponentName thisComponent = new ComponentName(this, /*getClass()*/ NotificationService.class);
+        PackageManager pm = getPackageManager();
+        pm.setComponentEnabledSetting(thisComponent, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+        pm.setComponentEnabledSetting(thisComponent, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
     }
 
     /**

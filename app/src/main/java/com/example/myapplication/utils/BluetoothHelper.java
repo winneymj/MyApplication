@@ -32,11 +32,18 @@ import com.example.myapplication.services.NotificationService;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import static android.bluetooth.BluetoothDevice.BOND_BONDED;
 import static android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;
 
 public class BluetoothHelper {
+
+    enum eState {
+        GATT_CONNECTING,
+        GATT_CONNECTED,
+        GATT_DISCONNECTED
+    };
 
     private static final int ENABLE_BLUETOOTH_REQUEST = 1;  // The request code
     private static final int ENABLE_LOCATION_REQUEST = 2;  // The request code
@@ -58,6 +65,7 @@ public class BluetoothHelper {
     private ScanSettings settings;
     private List<ScanFilter> filtersList;
     private BluetoothGatt mGatt;
+    private eState mState;
 
     // Stops scanning after 10 seconds.
     private static final long SCAN_PERIOD = 10000;
@@ -89,8 +97,15 @@ public class BluetoothHelper {
 
         if (!hasPermissions())
         {
-            return false;
+//            return false;
         }
+
+        // We only bond to single device so if the list returned is empty then
+        // we need to scan and pair and bond again.
+        Set<BluetoothDevice> bondedDevices = mBluetoothAdapter.getBondedDevices();
+        Log.i("BluetoothHelper", ".bondedDevices.size=" + bondedDevices.size());
+        if (bondedDevices.isEmpty()) {
+
 
 //
 //        // Ensures Bluetooth is available on the _device and it is enabled. If not,
@@ -103,30 +118,30 @@ public class BluetoothHelper {
 //            return false;
 //        }
 //
-//        if (Build.VERSION.SDK_INT >= 21) {
-//            mBleScanner = mBluetoothAdapter.getBluetoothLeScanner();
-//
-//            // Scan only for fixed MACAddress
-//            filtersList = new ArrayList<>();
-//            ScanFilter.Builder builder = new ScanFilter.Builder();
-//            builder.setDeviceAddress(MACAddress);
-//            filtersList.add(builder.build());
-//
-//            settings = new ScanSettings.Builder()
-//                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-//                    .build();
-//        }
-//
-//        // Actually set it in response to ACTION_PAIRING_REQUEST.
-//        final IntentFilter pairingRequestFilter = new IntentFilter();
-//        pairingRequestFilter.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
-//        pairingRequestFilter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-//        pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
-//        mAppContext.registerReceiver(mPairingRequestReceiver, pairingRequestFilter);
-//
-//        mHandler = new Handler();
-//        scanLeDevice(true);
+            if (Build.VERSION.SDK_INT >= 21) {
+                mBleScanner = mBluetoothAdapter.getBluetoothLeScanner();
 
+                // Scan only for fixed MACAddress
+                filtersList = new ArrayList<>();
+                ScanFilter.Builder builder = new ScanFilter.Builder();
+                builder.setDeviceAddress(MACAddress);
+                filtersList.add(builder.build());
+
+                settings = new ScanSettings.Builder()
+                        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                        .build();
+            }
+
+            // Actually set it in response to ACTION_PAIRING_REQUEST.
+            final IntentFilter pairingRequestFilter = new IntentFilter();
+            pairingRequestFilter.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
+            pairingRequestFilter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+            pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
+            mAppContext.registerReceiver(mPairingRequestReceiver, pairingRequestFilter);
+
+            mHandler = new Handler();
+            scanLeDevice(true);
+        }
         Log.i("BluetoothHelper", ".startScan():EXIT");
 
         return true;
@@ -272,7 +287,7 @@ public class BluetoothHelper {
             }
             else {
                 Log.i("BluetoothHelper", ".ScanCallback().onScanResult():ALREADY BONDED");
-                connectToDevice(btDevice);
+                connectToDevice();
                 }
         }
 
@@ -312,12 +327,22 @@ public class BluetoothHelper {
                 }
             };
 
-    public void connectToDevice(BluetoothDevice device) {
+    public boolean connectToDevice() {
         Log.i("BluetoothHelper", ".connectToDevice:ENTER");
-        if (mGatt == null) {
-            mGatt = device.connectGatt(mAppContext, false, gattCallback);
-            scanLeDevice(false);// will stop after first _device detection
+
+        if (null != mBluetoothAdapter && mBluetoothAdapter.isEnabled()) {
+            Set<BluetoothDevice> bondedDevices = mBluetoothAdapter.getBondedDevices();
+            Log.i("BluetoothHelper", ".bondedDevices.size=" + bondedDevices.size());
+            if (!bondedDevices.isEmpty()) {
+                Object device[] = bondedDevices.toArray();
+                    mGatt = ((BluetoothDevice)device[0]).connectGatt(mAppContext, false, gattCallback);
+
+                    mState = eState.GATT_CONNECTING;
+                    return true;
+                    //            scanLeDevice(false);// will stop after first _device detection
+            }
         }
+        return false;
     }
 
     /**
@@ -336,10 +361,14 @@ public class BluetoothHelper {
             switch (newState) {
                 case BluetoothProfile.STATE_CONNECTED:
                     Log.i("BluetoothHelper", ".gattCallback:STATE_CONNECTED");
-                    gatt.discoverServices();
+                    mState = eState.GATT_CONNECTED;
+                    // TODO Emit a GATT connected
+//                    gatt.discoverServices();
                     break;
                 case BluetoothProfile.STATE_DISCONNECTED:
                     Log.e("BluetoothHelper", ".gattCallback:STATE_DISCONNECTED");
+                    mState = eState.GATT_DISCONNECTED;
+                    // TODO Emit a GATT disconnected
                     break;
                 default:
                     Log.e("BluetoothHelper", "gattCallback:STATE_OTHER");
@@ -411,7 +440,7 @@ public class BluetoothHelper {
             {
                 final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
 //                int type = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
-//                Log.i("mPairingRequestReceiver:","onReceive:ACTION_BOND_STATE_CHANGED");
+                Log.i("mPairingRequestReceiver:","onReceive:ACTION_BOND_STATE_CHANGED");
 
                 final int state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR);
 
@@ -427,7 +456,7 @@ public class BluetoothHelper {
                         mAppContext.unregisterReceiver(mPairingRequestReceiver);
 
                         // Now try connecting to device
-                        connectToDevice(device);
+                        connectToDevice();
                         break;
 
                     case BluetoothDevice.BOND_NONE:

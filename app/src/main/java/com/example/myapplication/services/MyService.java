@@ -11,6 +11,8 @@ import android.os.Message;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.example.myapplication.utils.BluetoothHelper;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -69,32 +71,39 @@ public class MyService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d("MyService", ".onStartCommand:ENTER");
-        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        if (mBluetoothAdapter != null) {
-            try {
-                _device = mBluetoothAdapter.getRemoteDevice(BT_DEVICE);
-                if (null != _device) {
-                    deviceName = _device.getName();
-                    String macAddress = _device.getAddress();
-                    if (macAddress != null && macAddress.length() > 0) {
-                        connectToDevice(macAddress);
-                    } else {
-                        stopSelf();
-                        return Service.START_NOT_STICKY;
-                    }
-                }
-            }
-            catch (IllegalArgumentException e)
-            {
-                Log.d("MyService: exception:", e.getMessage());
-                stopSelf();
-                return Service.START_NOT_STICKY;
-            }
-        }
-        String stopservice = intent.getStringExtra("stopservice");
-        if (stopservice != null && stopservice.length() > 0) {
-            stop();
-        }
+
+        BluetoothHelper btInstance = BluetoothHelper.getInstance();
+
+        // Start connecting to device.  Wait for GATT connected event
+        btInstance.connectToDevice();
+
+
+//        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+//        if (mBluetoothAdapter != null) {
+//            try {
+//                _device = mBluetoothAdapter.getRemoteDevice(BT_DEVICE);
+//                if (null != _device) {
+//                    deviceName = _device.getName();
+//                    String macAddress = _device.getAddress();
+//                    if (macAddress != null && macAddress.length() > 0) {
+//                        connectToDevice(macAddress);
+//                    } else {
+//                        stopSelf();
+//                        return Service.START_NOT_STICKY;
+//                    }
+//                }
+//            }
+//            catch (IllegalArgumentException e)
+//            {
+//                Log.d("MyService: exception:", e.getMessage());
+//                stopSelf();
+//                return Service.START_NOT_STICKY;
+//            }
+//        }
+//        String stopservice = intent.getStringExtra("stopservice");
+//        if (stopservice != null && stopservice.length() > 0) {
+//            stop();
+//        }
         return START_STICKY;
     }
 
