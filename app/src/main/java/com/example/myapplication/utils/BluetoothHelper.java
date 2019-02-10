@@ -16,19 +16,15 @@ import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
-import android.os.IBinder;
-import android.service.notification.NotificationListenerService;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
-
-import com.example.myapplication.services.NotificationService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +40,9 @@ public class BluetoothHelper {
         GATT_CONNECTED,
         GATT_DISCONNECTED
     };
+
+    public static final  String GATT_CONNECTED_INTENT = "com.example.myapplication.GATT_CONNECTED";
+    public static final  String GATT_DISCONNECTED_INTENT = "com.example.myapplication.GATT_DISCONNECTED";
 
     private static final int ENABLE_BLUETOOTH_REQUEST = 1;  // The request code
     private static final int ENABLE_LOCATION_REQUEST = 2;  // The request code
@@ -335,11 +334,10 @@ public class BluetoothHelper {
             Log.i("BluetoothHelper", ".bondedDevices.size=" + bondedDevices.size());
             if (!bondedDevices.isEmpty()) {
                 Object device[] = bondedDevices.toArray();
+                    // Start Async connection to GATT.  See gattCallback for callback
                     mGatt = ((BluetoothDevice)device[0]).connectGatt(mAppContext, false, gattCallback);
-
                     mState = eState.GATT_CONNECTING;
                     return true;
-                    //            scanLeDevice(false);// will stop after first _device detection
             }
         }
         return false;
@@ -359,17 +357,24 @@ public class BluetoothHelper {
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             Log.i("BluetoothHelper", "onConnectionStateChange-Status: " + status);
             switch (newState) {
-                case BluetoothProfile.STATE_CONNECTED:
+                case BluetoothProfile.STATE_CONNECTED: {
                     Log.i("BluetoothHelper", ".gattCallback:STATE_CONNECTED");
                     mState = eState.GATT_CONNECTED;
-                    // TODO Emit a GATT connected
-//                    gatt.discoverServices();
+                    // Emit a GATT connected
+                    Intent intent = new Intent();
+                    intent.setAction(GATT_CONNECTED_INTENT);
+                    LocalBroadcastManager.getInstance(mAppContext).sendBroadcast(intent);
                     break;
-                case BluetoothProfile.STATE_DISCONNECTED:
+                }
+                case BluetoothProfile.STATE_DISCONNECTED: {
                     Log.e("BluetoothHelper", ".gattCallback:STATE_DISCONNECTED");
                     mState = eState.GATT_DISCONNECTED;
-                    // TODO Emit a GATT disconnected
+                    // Emit a GATT disconnected
+                    Intent intent = new Intent();
+                    intent.setAction(GATT_DISCONNECTED_INTENT);
+                    LocalBroadcastManager.getInstance(mAppContext).sendBroadcast(intent);
                     break;
+                }
                 default:
                     Log.e("BluetoothHelper", "gattCallback:STATE_OTHER");
             }
@@ -426,33 +431,34 @@ public class BluetoothHelper {
 
     private final BroadcastReceiver mPairingRequestReceiver = new BroadcastReceiver()
     {
+        private static final String TAG = "mPairingRequestReceiver";
         @Override
         public void onReceive(Context context, Intent intent)
         {
-            Log.i("mPairingRequestReceiver:","onReceive:" + intent.getAction());
+            Log.i(TAG,"onReceive:" + intent.getAction());
             if (BluetoothDevice.ACTION_PAIRING_REQUEST.equals(intent.getAction()))
             {
                 final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 int type = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
-                Log.i("mPairingRequestReceiver:","onReceive:ACTION_PAIRING_REQUEST");
+                Log.i(TAG,"onReceive:ACTION_PAIRING_REQUEST");
             }
             else if (BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(intent.getAction()))
             {
                 final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
 //                int type = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
-                Log.i("mPairingRequestReceiver:","onReceive:ACTION_BOND_STATE_CHANGED");
+                Log.i(TAG,"onReceive:ACTION_BOND_STATE_CHANGED");
 
                 final int state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR);
 
                 switch(state){
                     case BluetoothDevice.BOND_BONDING:
                         // Bonding...
-                        Log.i("mPairingRequestReceiver:","onReceive:Bonding...");
+                        Log.i(TAG,"onReceive:Bonding...");
                         break;
 
                     case BOND_BONDED:
                         // Bonded...
-                        Log.i("mPairingRequestReceiver:","onReceive:Bonded...");
+                        Log.i(TAG,"onReceive:Bonded...");
                         mAppContext.unregisterReceiver(mPairingRequestReceiver);
 
                         // Now try connecting to device
@@ -460,7 +466,7 @@ public class BluetoothHelper {
                         break;
 
                     case BluetoothDevice.BOND_NONE:
-                        Log.i("mPairingRequestReceiver:","onReceive:Not bonded...");
+                        Log.i(TAG,"onReceive:Not bonded...");
                         // Not bonded...
                         break;
                 }

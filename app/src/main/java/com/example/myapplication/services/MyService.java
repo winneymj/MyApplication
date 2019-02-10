@@ -4,7 +4,10 @@ import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -58,6 +61,14 @@ public class MyService extends Service {
     @Override
     public void onCreate() {
         Log.d("MyService", ".onCreate:ENTER");
+
+        // Setup broadcast receiver to see GATT status changes.
+        final IntentFilter pairingRequestFilter = new IntentFilter();
+        pairingRequestFilter.addAction(BluetoothHelper.GATT_CONNECTED_INTENT);
+        pairingRequestFilter.addAction(BluetoothHelper.GATT_DISCONNECTED_INTENT);
+        pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
+        registerReceiver(mGattBroadcastReceiver, pairingRequestFilter);
+
         super.onCreate();
     }
 
@@ -106,6 +117,19 @@ public class MyService extends Service {
 //        }
         return START_STICKY;
     }
+
+    private final BroadcastReceiver mGattBroadcastReceiver = new BroadcastReceiver()
+    {
+        private static final String TAG = "mGattBroadcastReceiver";
+        @Override
+        public void onReceive(Context context, Intent intent)
+        {
+            Log.i(TAG,"onReceive:" + intent.getAction());
+            if (BluetoothHelper.GATT_CONNECTED_INTENT.equals(intent.getAction())) {
+            } else if (BluetoothHelper.GATT_CONNECTED_INTENT.equals(intent.getAction())) {
+            }
+        }
+    };
 
     private synchronized void connectToDevice(String macAddress) {
         Log.d("MyService", ".connectToDevice:" + macAddress);
