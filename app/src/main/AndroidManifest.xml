@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!--<uses-permission android:name="com.example.myapplication.GATT_CONNECTED"/>-->
+    <!--<uses-permission android:name="com.example.myapplication.GATT_DISCONNECTED"/>-->
 
     <uses-feature
         android:name="android.hardware.bluetooth_le"

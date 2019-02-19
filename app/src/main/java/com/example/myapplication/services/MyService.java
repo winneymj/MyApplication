@@ -3,6 +3,7 @@ package com.example.myapplication.services;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -11,6 +12,7 @@ import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -21,6 +23,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.UUID;
 import java.util.Vector;
+
+import static android.bluetooth.BluetoothGattCharacteristic.FORMAT_SINT16;
+import static android.bluetooth.BluetoothGattCharacteristic.PERMISSION_WRITE;
 
 public class MyService extends Service {
     public MyService() {
@@ -56,18 +61,17 @@ public class MyService extends Service {
     public static int mState = STATE_NONE;
     public static String deviceName;
     public Vector<Byte> packdata = new Vector<Byte>(2048);
-    public static BluetoothDevice _device = null;
 
     @Override
     public void onCreate() {
         Log.d("MyService", ".onCreate:ENTER");
 
         // Setup broadcast receiver to see GATT status changes.
-        final IntentFilter pairingRequestFilter = new IntentFilter();
-        pairingRequestFilter.addAction(BluetoothHelper.GATT_CONNECTED_INTENT);
-        pairingRequestFilter.addAction(BluetoothHelper.GATT_DISCONNECTED_INTENT);
-        pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
-        registerReceiver(mGattBroadcastReceiver, pairingRequestFilter);
+        final IntentFilter requestFilter = new IntentFilter();
+        requestFilter.addAction(BluetoothHelper.GATT_CONNECTED_INTENT);
+        requestFilter.addAction(BluetoothHelper.GATT_DISCONNECTED_INTENT);
+        requestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
+        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(mGattBroadcastReceiver, requestFilter);
 
         super.onCreate();
     }
@@ -83,10 +87,12 @@ public class MyService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d("MyService", ".onStartCommand:ENTER");
 
-        BluetoothHelper btInstance = BluetoothHelper.getInstance();
+        BluetoothHelper btHelperInstance = BluetoothHelper.getInstance(getApplicationContext());
+
+        BluetoothHelper.getInstance(getApplicationContext()).writeDataToBtCharacteristic();
 
         // Start connecting to device.  Wait for GATT connected event
-        btInstance.connectToDevice();
+//        btHelperInstance.connectToDevice();
 
 
 //        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
@@ -115,48 +121,54 @@ public class MyService extends Service {
 //        if (stopservice != null && stopservice.length() > 0) {
 //            stop();
 //        }
+        Log.d("MyService", ".onStartCommand:EXIT");
         return START_STICKY;
     }
 
     private final BroadcastReceiver mGattBroadcastReceiver = new BroadcastReceiver()
     {
-        private static final String TAG = "mGattBroadcastReceiver";
+        private static final String TAG = "MyService";
         @Override
         public void onReceive(Context context, Intent intent)
         {
-            Log.i(TAG,"onReceive:" + intent.getAction());
+            Log.i(TAG,"mGattBroadcastReceiver.onReceive:" + intent.getAction());
             if (BluetoothHelper.GATT_CONNECTED_INTENT.equals(intent.getAction())) {
-            } else if (BluetoothHelper.GATT_CONNECTED_INTENT.equals(intent.getAction())) {
+                // Temporary code
+//                BluetoothHelper.getInstance(getApplicationContext()).discoverServices();
+                // Only connect send out data when we have a connection
+                BluetoothHelper.getInstance(getApplicationContext()).writeDataToBtCharacteristic();
+            } else if (BluetoothHelper.GATT_DISCONNECTED_INTENT.equals(intent.getAction())) {
+                Log.i(TAG,"mGattBroadcastReceiver.onReceive:" + intent.getAction());
             }
         }
     };
 
-    private synchronized void connectToDevice(String macAddress) {
-        Log.d("MyService", ".connectToDevice:" + macAddress);
-
-        try {
-            BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(macAddress);
-            if (mState == STATE_CONNECTING) {
-                if (mConnectThread != null) {
-                    mConnectThread.cancel();
-                    mConnectThread = null;
-                }
-            }
-
-            // Cancel any thread currently running a connection
-            if (mConnectedThread != null) {
-                mConnectedThread.cancel();
-                mConnectedThread = null;
-            }
-            mConnectThread = new ConnectThread(device);
-            mConnectThread.start();
-            setState(STATE_CONNECTING);
-        } catch (IllegalArgumentException e) {
-            Log.d("MyService: exception:", e.getMessage());
-            return;
-        }
-
-    }
+//    private synchronized void connectToDevice(String macAddress) {
+//        Log.d("MyService", ".connectToDevice:" + macAddress);
+//
+//        try {
+//            BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(macAddress);
+//            if (mState == STATE_CONNECTING) {
+//                if (mConnectThread != null) {
+//                    mConnectThread.cancel();
+//                    mConnectThread = null;
+//                }
+//            }
+//
+//            // Cancel any thread currently running a connection
+//            if (mConnectedThread != null) {
+//                mConnectedThread.cancel();
+//                mConnectedThread = null;
+//            }
+//            mConnectThread = new ConnectThread(device);
+//            mConnectThread.start();
+//            setState(STATE_CONNECTING);
+//        } catch (IllegalArgumentException e) {
+//            Log.d("MyService: exception:", e.getMessage());
+//            return;
+//        }
+//
+//    }
 
     private void setState(int state) {
         Log.d("MyService", ".setState:ENTER");
@@ -396,8 +408,8 @@ public class MyService extends Service {
 
     @Override
     public void onDestroy() {
+        Log.d("MyService", "onDestroy");
         stop();
-        Log.d("MyService", "Destroyed");
         super.onDestroy();
     }
 

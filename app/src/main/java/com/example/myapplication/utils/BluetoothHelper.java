@@ -1,7 +1,5 @@
 package com.example.myapplication.utils;
 
-import android.Manifest;
-import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -22,32 +20,42 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
-import android.support.v4.content.ContextCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import static android.bluetooth.BluetoothDevice.BOND_BONDED;
-import static android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;
 
 public class BluetoothHelper {
 
     enum eState {
-        GATT_CONNECTING,
-        GATT_CONNECTED,
-        GATT_DISCONNECTED
+        GATT_CONNECTING(1),
+        GATT_CONNECTED(2),
+        GATT_DISCONNECTED(4),
+        BOND_BONDED(128),
+        BOND_BONDING(256),
+        BOND_UNBONDED(512);
+
+        private int value;
+
+        private eState(int value) {
+            this.value = value;
+        }
+
+        public int value() {
+            return value;
+        }
     };
+
+    public static final UUID UUID_WRITE_CHARACTERISTIC = UUID.fromString("0000a001-0000-1000-8000-00805f9b34fb");
+    public static final UUID UUID_SERVICE = UUID.fromString("0000a000-0000-1000-8000-00805f9b34fb");
 
     public static final  String GATT_CONNECTED_INTENT = "com.example.myapplication.GATT_CONNECTED";
     public static final  String GATT_DISCONNECTED_INTENT = "com.example.myapplication.GATT_DISCONNECTED";
-
-    private static final int ENABLE_BLUETOOTH_REQUEST = 1;  // The request code
-    private static final int ENABLE_LOCATION_REQUEST = 2;  // The request code
-    private static final int ENABLE_NOTIFICATION_REQUEST = 3;  // The request code
-    private static final int NOTIFICATION_PERMISSION_CODE = 123;
 
     public final static String ACTION_GATT_SERVICES_DISCOVERED =
             "com.example.bluetooth.le.ACTION_GATT_SERVICES_DISCOVERED";
@@ -58,13 +66,11 @@ public class BluetoothHelper {
     private BluetoothAdapter mBluetoothAdapter;
     private boolean mScanning;
     private Handler mHandler;
+
     private BluetoothLeScanner mBleScanner;
     private Context mAppContext;
-    private Activity mActivity;
-    private ScanSettings settings;
-    private List<ScanFilter> filtersList;
-    private BluetoothGatt mGatt;
-    private eState mState;
+    private BluetoothGatt mGatt = null;
+    private int mState = eState.BOND_UNBONDED.value() | eState.GATT_DISCONNECTED.value();
 
     // Stops scanning after 10 seconds.
     private static final long SCAN_PERIOD = 10000;
@@ -73,129 +79,161 @@ public class BluetoothHelper {
     //private constructor to avoid client applications to use constructor
     private BluetoothHelper(){}
 
-    public static BluetoothHelper getInstance()
+    public static BluetoothHelper getInstance(final Context context)
     {
-        return instance;
-
-    }
-
-    public void setArguments(final Activity activity)
-    {
-        mActivity = activity;
-        mAppContext = activity.getApplicationContext();
-    }
-
-    public boolean startScan()
-    {
-        Log.i("BluetoothHelper", ".startScan():ENTER");
+        Log.i("BluetoothHelper", ".getInstance():ENTER");
+        instance.mAppContext = context;
 
         // Initializes Bluetooth adapter.
-        final BluetoothManager bluetoothManager =
-                (BluetoothManager) mAppContext.getSystemService(Context.BLUETOOTH_SERVICE);
-        mBluetoothAdapter = bluetoothManager.getAdapter();
+        if (null == instance.mBluetoothAdapter) {
+            final BluetoothManager bluetoothManager =
+                    (BluetoothManager) instance.mAppContext.getSystemService(Context.BLUETOOTH_SERVICE);
+            instance.mBluetoothAdapter = bluetoothManager.getAdapter();
 
-        if (!hasPermissions())
-        {
-//            return false;
+            // Setup a broadcast receiver.
+            final IntentFilter requestFilter = new IntentFilter();
+            requestFilter.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
+            requestFilter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+            requestFilter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+            requestFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
+            requestFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+            requestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
+            instance.mAppContext.registerReceiver(instance.mPairingRequestReceiver, requestFilter);
+
+            instance.mHandler = new Handler();
         }
 
-        // We only bond to single device so if the list returned is empty then
-        // we need to scan and pair and bond again.
-        Set<BluetoothDevice> bondedDevices = mBluetoothAdapter.getBondedDevices();
-        Log.i("BluetoothHelper", ".bondedDevices.size=" + bondedDevices.size());
-        if (bondedDevices.isEmpty()) {
+        // Set bonded state so we know if we need to rebind
+        instance.setBondedState(instance.deviceBonded() ? eState.BOND_BONDED : eState.BOND_UNBONDED);
 
-
-//
-//        // Ensures Bluetooth is available on the _device and it is enabled. If not,
-//        // displays a dialog requesting user permission to enable Bluetooth.
-//        if (mBluetoothAdapter == null || !mBluetoothAdapter.isEnabled())
-//        {
-////            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-////            activity.startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-//            Log.i("BluetoothHelper", ".init() : no ble _device or not enabled");
-//            return false;
-//        }
-//
-            if (Build.VERSION.SDK_INT >= 21) {
-                mBleScanner = mBluetoothAdapter.getBluetoothLeScanner();
-
-                // Scan only for fixed MACAddress
-                filtersList = new ArrayList<>();
-                ScanFilter.Builder builder = new ScanFilter.Builder();
-                builder.setDeviceAddress(MACAddress);
-                filtersList.add(builder.build());
-
-                settings = new ScanSettings.Builder()
-                        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                        .build();
+        // If we are bonded then perhaps we can just GATT connect
+        if (instance.deviceBonded() && !instance.gattConnected() && !instance.gattConnecting()) {
+            Log.i("BluetoothHelper", ".getInstance.already Bonded");
+            BluetoothDevice device = instance.getBondedDevice();
+            if (null != device) {
+                // Start Async connection to GATT.  See gattCallback for callback
+                Log.i("BluetoothHelper", ".getInstance-device.connectGatt()");
+                instance.mGatt = device.connectGatt(instance.mAppContext, false, instance.gattCallback);
+                instance.setGATTState(eState.GATT_CONNECTING);
+                return instance;
             }
-
-            // Actually set it in response to ACTION_PAIRING_REQUEST.
-            final IntentFilter pairingRequestFilter = new IntentFilter();
-            pairingRequestFilter.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
-            pairingRequestFilter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-            pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
-            mAppContext.registerReceiver(mPairingRequestReceiver, pairingRequestFilter);
-
-            mHandler = new Handler();
-            scanLeDevice(true);
-        }
-        Log.i("BluetoothHelper", ".startScan():EXIT");
-
-        return true;
-    }
-
-    private boolean hasPermissions()
-    {
-        if (null == mBluetoothAdapter || !mBluetoothAdapter.isEnabled())
-        {
-            requestBluetoothEnable();
-            return false;
-        } else if (!hasLocationPermissions())
-        {
-            requestLocationPermission();
-            return false;
-        } else if (!hasNotificationPermissions())
-        {
-            requestNotificationPermission();
-            return false;
         }
 
-        return true;
+        // Make sure we are connected and bonded.  Don't do it if we are in the process of bonding.
+        Log.i("BluetoothHelper", ".gattConnecting=" + instance.gattConnecting());
+        if (!instance.gattConnecting()) {
+            // Only try to scan again if we are not in the middle of scan or connect
+            if (!instance.deviceBonded() || !instance.gattConnected()) {
+                Log.i("BluetoothHelper", ".deviceBonded=" + instance.deviceBonded() +
+                        ", gattConnected=" + instance.gattConnected());
+                // Stop the scan and try again
+                if (Build.VERSION.SDK_INT >= 21) {
+                    instance.mBleScanner = instance.mBluetoothAdapter.getBluetoothLeScanner();
+                    instance.mBleScanner.stopScan(instance.mScanCallback);
+                    instance.scanLeDevice(true);
+                }
+            }
+        }
+
+        Log.i("BluetoothHelper", ".getInstance():EXIT");
+        return instance;
     }
 
-    private void requestBluetoothEnable()
-    {
-        Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-        mActivity.startActivityForResult(enableIntent, ENABLE_BLUETOOTH_REQUEST);
-        Log.d("requestBluetoothEnable", "Request user enables bluetooth.  Try starting scan again");
+    public BluetoothGatt gatt() {
+        return mGatt;
     }
 
-    private boolean hasLocationPermissions()
-    {
-        // Request permission from user to access location data so we can use BLE
-        return ContextCompat.checkSelfPermission(mAppContext, Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED;
-    }
-
-    private void requestLocationPermission()
-    {
-        mActivity.requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, ENABLE_LOCATION_REQUEST);
-    }
-
-    private boolean hasNotificationPermissions()
-    {
-        // Request permission for notifications
-//        return ContextCompat.checkSelfPermission(mAppContext, Manifest.permission.ACCESS_NOTIFICATION_POLICY)
-//                == PackageManager.PERMISSION_GRANTED;
+    private boolean deviceBonded() {
+        Set<BluetoothDevice> bondedDevices = instance.mBluetoothAdapter.getBondedDevices();
+//        Log.i("BluetoothHelper", ".deviceBonded.bondedDevices.size=" + bondedDevices.size());
+        for (BluetoothDevice device : bondedDevices) {
+            final String deviceAddr = device.getAddress();
+//            Log.i("BluetoothHelper", ".deviceBonded.deviceAddr=" + deviceAddr);
+            if (deviceAddr.equalsIgnoreCase(MACAddress)) {
+                return true;
+            }
+        }
         return false;
     }
 
-    private void requestNotificationPermission()
-    {
-//        mActivity.requestPermissions(new String[]{Manifest.permission.ACCESS_NOTIFICATION_POLICY}, ENABLE_NOTIFICATION_REQUEST);
-        mActivity.startActivity(new Intent(ACTION_NOTIFICATION_LISTENER_SETTINGS));
+    private BluetoothDevice getBondedDevice() {
+        Set<BluetoothDevice> bondedDevices = instance.mBluetoothAdapter.getBondedDevices();
+//        Log.i("BluetoothHelper", ".deviceBonded.bondedDevices.size=" + bondedDevices.size());
+        for (BluetoothDevice device : bondedDevices) {
+            final String deviceAddr = device.getAddress();
+//            Log.i("BluetoothHelper", ".deviceBonded.deviceAddr=" + deviceAddr);
+            if (deviceAddr.equalsIgnoreCase(MACAddress)) {
+                return device;
+            }
+        }
+        return null;
+    }
+
+    private boolean deviceBonding() {
+        return (instance.mState & eState.BOND_BONDING.value()) > 0;
+    }
+
+    private boolean gattConnected() {
+        return (instance.mState & eState.GATT_CONNECTED.value()) > 0;
+    }
+
+    private boolean gattConnecting() {
+        return (instance.mState & eState.GATT_CONNECTING.value()) > 0;
+    }
+
+    // Make sure one of the bonded devices is the one we are looking for
+    public boolean writeDataToBtCharacteristic() {
+        Log.i("BluetoothHelper", ".writeDataToBtCharacteristic ENTER");
+
+        try {
+            BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(MACAddress);
+            Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getRemoteDevice()");
+//            mGatt = device.connectGatt(mAppContext, false, gattCallback);
+//            Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.connectGatt(()");
+
+//        BluetoothGattCharacteristic characteristic = new BluetoothGattCharacteristic(
+//                UUID_WRITE_CHARACTERISTIC,
+//                BluetoothGattCharacteristic.PROPERTY_WRITE, /* FORMAT_SINT16*/
+//                BluetoothGattCharacteristic.PERMISSION_WRITE);
+
+            if (null != mGatt) {
+                BluetoothGattService mSVC = mGatt.getService(UUID_SERVICE);
+                Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getService()");
+                if (null != mSVC) {
+                    Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getCharacteristic(()");
+                    BluetoothGattCharacteristic characteristic = mSVC.getCharacteristic(UUID_WRITE_CHARACTERISTIC);
+                    if (null != characteristic) {
+                        byte[] b = hexStringToByteArray("FF");
+                        characteristic.setValue(b);
+                        characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+
+                        if (mGatt.writeCharacteristic(characteristic)) {
+                            Log.i("BluetoothHelper", ".writeDataToBtCharacteristic success");
+                        } else {
+                            Log.e("BluetoothHelper", ".writeDataToBtCharacteristic failed");
+                            return false;
+                        }
+                    } else {
+                        Log.e("BluetoothHelper", ".writeDataToBtCharacteristic mSVC.getCharacteristic == null");
+                        return false;
+                    }
+                } else {
+                    Log.e("BluetoothHelper", ".writeDataToBtCharacteristic mGatt.getService == null");
+                    return false;
+                }
+            }
+        }catch (IllegalArgumentException ia)
+        {
+            Log.e("BluetoothHelper", ".writeDataToBtCharacteristic:", ia);
+            return false;
+        }
+
+        Log.i("BluetoothHelper", ".writeDataToBtCharacteristic return true");
+        return true;
+    }
+
+    public boolean isBluetoothEnabled() {
+        return (null != mBluetoothAdapter && mBluetoothAdapter.isEnabled());
     }
 
     public boolean verifyBleSupported()
@@ -245,7 +283,8 @@ public class BluetoothHelper {
                     } else {
                         Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.stopScan");
                         mBleScanner.stopScan(mScanCallback);
-
+                        // Indicate we have stopped scanning
+                        // setDeviceState(eState.DEVICE_DISCONNECTED);
                     }
                 }
             }, SCAN_PERIOD);
@@ -253,6 +292,16 @@ public class BluetoothHelper {
                 mBluetoothAdapter.startLeScan(mLeScanCallback);
             } else {
                 Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.startScan");
+                // Scan only for fixed MACAddress
+                List<ScanFilter> filtersList = new ArrayList<>();
+                ScanFilter.Builder builder = new ScanFilter.Builder();
+                builder.setDeviceAddress(MACAddress);
+                filtersList.add(builder.build());
+
+                ScanSettings settings = new ScanSettings.Builder()
+                        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                        .build();
+
                 mBleScanner.startScan(filtersList, settings, mScanCallback);
             }
         } else {
@@ -278,16 +327,19 @@ public class BluetoothHelper {
             Log.i("BluetoothHelper", ".ScanCallback().onScanResult():devAddress="+devAddress);
             Log.i("BluetoothHelper", ".ScanCallback().onScanResult():devName=" + devName);
             // See if we are already bonded and do not create bond again
-            if (BOND_BONDED != btDevice.getBondState()) {
+            if (!deviceBonded()) {
+                setBondedState(eState.BOND_BONDING);
                 Log.i("BluetoothHelper", ".ScanCallback().onScanResult():NOT BOND_BONDED");
-                if (btDevice.createBond()) {
+                if (!btDevice.createBond()) {
+                    setBondedState(eState.BOND_UNBONDED);
                     Log.i("BluetoothHelper", ".ScanCallback().onScanResult():createBond Failed");
                 }
             }
             else {
                 Log.i("BluetoothHelper", ".ScanCallback().onScanResult():ALREADY BONDED");
+                setBondedState(eState.BOND_BONDED);
                 connectToDevice();
-                }
+            }
         }
 
         @Override
@@ -326,22 +378,70 @@ public class BluetoothHelper {
                 }
             };
 
+    private void setGATTState(eState state) {
+        // Clear down bits
+        mState &= ~(eState.GATT_CONNECTING.value());
+        mState &= ~(eState.GATT_DISCONNECTED.value());
+        mState &= ~(eState.GATT_CONNECTED.value());
+        mState |= state.value();
+    }
+
+    private void setBondedState(eState state) {
+        // Clear down bits
+        mState &= ~(eState.BOND_BONDED.value());
+        mState &= ~(eState.BOND_BONDING.value());
+        mState &= ~(eState.BOND_UNBONDED.value());
+        mState |= state.value();
+    }
+
+    private void clearDeviceState(eState state) {
+        // Clear down bits
+        mState &= ~(state.value());
+    }
+
     public boolean connectToDevice() {
         Log.i("BluetoothHelper", ".connectToDevice:ENTER");
 
         if (null != mBluetoothAdapter && mBluetoothAdapter.isEnabled()) {
-            Set<BluetoothDevice> bondedDevices = mBluetoothAdapter.getBondedDevices();
-            Log.i("BluetoothHelper", ".bondedDevices.size=" + bondedDevices.size());
-            if (!bondedDevices.isEmpty()) {
-                Object device[] = bondedDevices.toArray();
-                    // Start Async connection to GATT.  See gattCallback for callback
-                    mGatt = ((BluetoothDevice)device[0]).connectGatt(mAppContext, false, gattCallback);
-                    mState = eState.GATT_CONNECTING;
-                    return true;
+            BluetoothDevice device = getBondedDevice();
+            if (null != device) {
+                // Start Async connection to GATT.  See gattCallback for callback
+                Log.i("BluetoothHelper", "connectToDevice.connectGatt()");
+                mGatt = device.connectGatt(mAppContext, false, gattCallback);
+                setGATTState(eState.GATT_CONNECTING);
+                return true;
+            } else {
+//                // TODO Perhaps we should try to connect and bind to device
+//                Log.i("BluetoothHelper", "NO BONDED DEVICES");
+//                setGATTState(eState.GATT_DISCONNECTED);
+//                mGatt = null;
             }
+        } else {
+//            Log.i("BluetoothHelper", ".connectToDevice:mBluetoothAdapter=" + mBluetoothAdapter);
+//            setGATTState(eState.GATT_DISCONNECTED);
+//            mGatt = null;
+        }
+        Log.i("BluetoothHelper", ".connectToDevice:EXIT");
+        return false;
+    }
+
+    /**
+     *
+     * @return true if discover service has started else false
+     */
+    public boolean discoverServices() {
+        if (null != mGatt) {
+            return mGatt.discoverServices();
         }
         return false;
     }
+
+    //The BroadcastReceiver that listens for bluetooth broadcasts
+    private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+        }
+    };
 
     /**
      * This abstract class is used to implement BluetoothGatt callbacks.
@@ -358,8 +458,11 @@ public class BluetoothHelper {
             Log.i("BluetoothHelper", "onConnectionStateChange-Status: " + status);
             switch (newState) {
                 case BluetoothProfile.STATE_CONNECTED: {
-                    Log.i("BluetoothHelper", ".gattCallback:STATE_CONNECTED");
-                    mState = eState.GATT_CONNECTED;
+                    Log.i("BluetoothHelper", ".gattCallback:GATT_STATE_CONNECTED");
+                    setGATTState(eState.GATT_CONNECTED);
+                    // Now try to discover services
+                    discoverServices();
+
                     // Emit a GATT connected
                     Intent intent = new Intent();
                     intent.setAction(GATT_CONNECTED_INTENT);
@@ -367,8 +470,9 @@ public class BluetoothHelper {
                     break;
                 }
                 case BluetoothProfile.STATE_DISCONNECTED: {
-                    Log.e("BluetoothHelper", ".gattCallback:STATE_DISCONNECTED");
-                    mState = eState.GATT_DISCONNECTED;
+                    Log.i("BluetoothHelper", ".gattCallback:GATT_STATE_DISCONNECTED");
+                    setGATTState(eState.GATT_DISCONNECTED);
+                    mGatt = null;
                     // Emit a GATT disconnected
                     Intent intent = new Intent();
                     intent.setAction(GATT_DISCONNECTED_INTENT);
@@ -393,19 +497,19 @@ public class BluetoothHelper {
                     for (BluetoothGattCharacteristic characteristic : gattService.getCharacteristics()) {
                         Log.i("onServicesDiscovered", "onServicesDiscovered: characteristic=" + characteristic.getUuid());
 
-                        if (characteristic.getUuid().toString().equals("0000a001-0000-1000-8000-00805f9b34fb")) {
-
-                            Log.w("onServicesDiscovered", "onServicesDiscovered: found LED");
-
-                            String originalString = "00";
-
-                            byte[] b = hexStringToByteArray(originalString);
-
-                            characteristic.setValue(b); // call this BEFORE(!) you 'write' any stuff to the server
-                            gatt.writeCharacteristic(characteristic);
-
-                            Log.i("onServicesDiscovered", "onServicesDiscovered: , write bytes?! " + bytesToHexStr(b));
-                        }
+//                        if (characteristic.getUuid().toString().equals("0000a001-0000-1000-8000-00805f9b34fb")) {
+//
+//                            Log.w("onServicesDiscovered", "onServicesDiscovered: found LED");
+//
+//                            String originalString = "00";
+//
+//                            byte[] b = hexStringToByteArray(originalString);
+//
+//                            characteristic.setValue(b); // call this BEFORE(!) you 'write' any stuff to the server
+//                            gatt.writeCharacteristic(characteristic);
+//
+//                            Log.i("onServicesDiscovered", "onServicesDiscovered: , write bytes?! " + bytesToHexStr(b));
+//                        }
                     }
                 }
 
@@ -436,13 +540,15 @@ public class BluetoothHelper {
         public void onReceive(Context context, Intent intent)
         {
             Log.i(TAG,"onReceive:" + intent.getAction());
-            if (BluetoothDevice.ACTION_PAIRING_REQUEST.equals(intent.getAction()))
+            String action = intent.getAction();
+
+            if (BluetoothDevice.ACTION_PAIRING_REQUEST.equals(action))
             {
                 final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 int type = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
                 Log.i(TAG,"onReceive:ACTION_PAIRING_REQUEST");
             }
-            else if (BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(intent.getAction()))
+            else if (BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(action))
             {
                 final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
 //                int type = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
@@ -454,12 +560,14 @@ public class BluetoothHelper {
                     case BluetoothDevice.BOND_BONDING:
                         // Bonding...
                         Log.i(TAG,"onReceive:Bonding...");
+                        setBondedState(eState.BOND_BONDING);
                         break;
 
                     case BOND_BONDED:
                         // Bonded...
                         Log.i(TAG,"onReceive:Bonded...");
                         mAppContext.unregisterReceiver(mPairingRequestReceiver);
+                        setBondedState(eState.BOND_BONDED);
 
                         // Now try connecting to device
                         connectToDevice();
@@ -467,9 +575,30 @@ public class BluetoothHelper {
 
                     case BluetoothDevice.BOND_NONE:
                         Log.i(TAG,"onReceive:Not bonded...");
+                        setBondedState(eState.BOND_UNBONDED);
                         // Not bonded...
                         break;
                 }
+            } else if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                // Device found
+//                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                Log.i(TAG,"onReceive:ACTION_FOUND");
+            }
+            else if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
+                // Device is now connected
+                Log.i(TAG,"onReceive:ACTION_ACL_CONNECTED");
+            }
+//            else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+//                // Done searching
+//                Log.i(TAG,"onReceive:ACTION_DISCOVERY_FINISHED");
+//            }
+            else if (BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED.equals(action)) {
+                // Device is about to disconnect
+                Log.i(TAG,"onReceive:ACTION_ACL_DISCONNECT_REQUESTED");
+            }
+            else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
+                // Device has disconnected
+                Log.i(TAG,"onReceive:ACTION_ACL_DISCONNECT_REQUESTED");
             }
         }
     };
@@ -493,6 +622,23 @@ public class BluetoothHelper {
             hexChars[j * 2 + 1] = hexArray[v & 0x0F];
         }
         return new String(hexChars);
+    }
+
+    public void printConnectionStatus()
+    {
+        final String TAG = "printConnectionStatus";
+        String bondedState = "";
+        bondedState += ((mState & eState.BOND_UNBONDED.value()) == eState.BOND_UNBONDED.value()) ? "UNBONDED" : "";
+        bondedState += ((mState & eState.BOND_BONDED.value()) == eState.BOND_BONDED.value()) ? "BONDED" : "";
+        bondedState += ((mState & eState.BOND_BONDING.value()) == eState.BOND_BONDING.value()) ? "BONDING" : "";
+        Log.i(TAG,"mState:0b" + Integer.toBinaryString(mState));
+        Log.i(TAG,"BONDED:" + bondedState);
+
+        String gattState = "";
+        gattState += ((mState & eState.GATT_DISCONNECTED.value()) == eState.GATT_DISCONNECTED.value()) ? "DISCONNECTED" : "";
+        gattState += ((mState & eState.GATT_CONNECTED.value()) == eState.GATT_CONNECTED.value()) ? "CONNECTED" : "";
+        gattState += ((mState & eState.GATT_CONNECTING.value()) == eState.GATT_CONNECTING.value()) ? "CONNECTING" : "";
+        Log.i(TAG,"GATT:" + gattState);
     }
 }
 

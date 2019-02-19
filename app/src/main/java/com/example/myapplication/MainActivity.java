@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Handler;
 import android.service.notification.NotificationListenerService;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -17,6 +18,7 @@ import android.util.Log;
 import com.example.myapplication.services.MyService;
 import com.example.myapplication.services.NotificationService;
 import com.example.myapplication.utils.BluetoothHelper;
+import com.example.myapplication.utils.PermissionsHelper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +27,8 @@ import static android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;
 
 public class MainActivity extends AppCompatActivity {
 
+    private int mInterval = 10000; // 1 seconds by default, can be changed later
+    private Handler mTimerHandler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,9 +68,34 @@ public class MainActivity extends AppCompatActivity {
 ////            requestPermissions(permissions.toArray(new String[0]), NOTIFICATION_PERMISSION_CODE);
 //        }
 
-        BluetoothHelper ble = BluetoothHelper.getInstance();
-        ble.setArguments(this);
-        ble.startScan();
+        PermissionsHelper.hasPermissions(this);
+
+        // Make sure we have initialized the bluetooth helper
+        BluetoothHelper ble = BluetoothHelper.getInstance(getApplicationContext());
+        mTimerHandler = new Handler();
+        startRepeatingTask();
+
+    }
+
+    Runnable mStatusChecker = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                BluetoothHelper.getInstance(getApplicationContext()).printConnectionStatus();
+            } finally {
+                // 100% guarantee that this always happens, even if
+                // your update method throws an exception
+                mTimerHandler.postDelayed(mStatusChecker, mInterval);
+            }
+        }
+    };
+
+    private void startRepeatingTask() {
+        mStatusChecker.run();
+    }
+
+    private void stopRepeatingTask() {
+        mTimerHandler.removeCallbacks(mStatusChecker);
     }
 
     private void toggleNotificationListenerService()
