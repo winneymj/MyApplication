@@ -53,6 +53,9 @@ public class BluetoothHelper {
         }
     };
 
+    public final static String ACTION_GATT_CONNECTED = "com.example.bluetooth.le.ACTION_GATT_CONNECTED";
+    public final static String ACTION_GATT_DISCONNECTED = "com.example.bluetooth.le.ACTION_GATT_DISCONNECTED";
+
     public static final UUID UUID_WRITE_CHARACTERISTIC = UUID.fromString("0000a001-0000-1000-8000-00805f9b34fb");
     public static final UUID UUID_SERVICE = UUID.fromString("0000a000-0000-1000-8000-00805f9b34fb");
 
@@ -308,41 +311,29 @@ public class BluetoothHelper {
             mHandler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    if (Build.VERSION.SDK_INT < 21) {
-                        mBluetoothAdapter.stopLeScan(mLeScanCallback);
-                    } else {
-                        Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.stopScan");
-                        mBleScanner.stopScan(mScanCallback);
-                        // Indicate we have stopped scanning
-                        setScanningState(eState.BLE_NOT_SCANNING);
-                    }
+                    Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.stopScan");
+                    mBleScanner.stopScan(mScanCallback);
+                    // Indicate we have stopped scanning
+                    setScanningState(eState.BLE_NOT_SCANNING);
                 }
             }, SCAN_PERIOD);
-            if (Build.VERSION.SDK_INT < 21) {
-                mBluetoothAdapter.startLeScan(mLeScanCallback);
-            } else {
-                Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.startScan");
-                // Scan only for fixed MACAddress
-                List<ScanFilter> filtersList = new ArrayList<>();
-                ScanFilter.Builder builder = new ScanFilter.Builder();
-                builder.setDeviceAddress(MACAddress);
-                filtersList.add(builder.build());
+            Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.startScan");
+            // Scan only for fixed MACAddress
+            List<ScanFilter> filtersList = new ArrayList<>();
+            ScanFilter.Builder builder = new ScanFilter.Builder();
+            builder.setDeviceAddress(MACAddress);
+            filtersList.add(builder.build());
 
-                ScanSettings settings = new ScanSettings.Builder()
-                        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                        .build();
+            ScanSettings settings = new ScanSettings.Builder()
+                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                    .build();
 
-                mBleScanner.startScan(filtersList, settings, mScanCallback);
-                setScanningState(eState.BLE_SCANNING);
-            }
+            mBleScanner.startScan(filtersList, settings, mScanCallback);
+            setScanningState(eState.BLE_SCANNING);
         } else {
-            if (Build.VERSION.SDK_INT < 21) {
-                mBluetoothAdapter.stopLeScan(mLeScanCallback);
-            } else {
-                Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.stopScan");
-                mBleScanner.stopScan(mScanCallback);
-                setScanningState(eState.BLE_NOT_SCANNING);
-            }
+            Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.stopScan");
+            mBleScanner.stopScan(mScanCallback);
+            setScanningState(eState.BLE_NOT_SCANNING);
         }
         Log.i("BluetoothHelper", ".scanLeDevice() : EXIT");
     }
@@ -384,14 +375,15 @@ public class BluetoothHelper {
         @Override
         public void onScanFailed(int errorCode) {
             Log.e("BluetoothHelper", ".ScanCallback().onScanFailed: Scan Failed:Error Code:" + errorCode);
+            setScanningState(eState.BLE_NOT_SCANNING);
         }
     };
 
-    private BluetoothAdapter.LeScanCallback mLeScanCallback =
-            new BluetoothAdapter.LeScanCallback() {
-                @Override
-                public void onLeScan(final BluetoothDevice device, int rssi,
-                                     byte[] scanRecord) {
+//    private BluetoothAdapter.LeScanCallback mLeScanCallback =
+//            new BluetoothAdapter.LeScanCallback() {
+//                @Override
+//                public void onLeScan(final BluetoothDevice device, int rssi,
+//                                     byte[] scanRecord) {
 //                    AsyncTask.execute(new Runnable() {
 //                        @Override
 //                        public void run() {
@@ -407,8 +399,8 @@ public class BluetoothHelper {
 ////                            connectToDevice(_device);
 ////                        }
 ////                    });
-                }
-            };
+//                }
+//            };
 
     private void setGATTState(eState state) {
         // Clear down bits
@@ -464,17 +456,6 @@ public class BluetoothHelper {
         return false;
     }
 
-    /**
-     *
-     * @return true if discover service has started else false
-     */
-    public boolean discoverServices() {
-        if (null != mGatt) {
-            return mGatt.discoverServices();
-        }
-        return false;
-    }
-
     //The BroadcastReceiver that listens for bluetooth broadcasts
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         @Override
@@ -500,7 +481,7 @@ public class BluetoothHelper {
                     Log.i("BluetoothHelper", ".gattCallback:GATT_STATE_CONNECTED");
                     setGATTState(eState.GATT_CONNECTED);
                     // Now try to discover services
-                    discoverServices();
+                    mGatt.discoverServices();
 
                     // Emit a GATT connected
                     Intent intent = new Intent();
@@ -512,6 +493,7 @@ public class BluetoothHelper {
                     Log.i("BluetoothHelper", ".gattCallback:GATT_STATE_DISCONNECTED");
                     setGATTState(eState.GATT_DISCONNECTED);
                     mGatt = null;
+
                     // Emit a GATT disconnected
                     Intent intent = new Intent();
                     intent.setAction(GATT_DISCONNECTED_INTENT);
@@ -707,5 +689,10 @@ public class BluetoothHelper {
         mTimerHandler.removeCallbacks(mStatusChecker);
     }
 
+    private void broadcastUpdate(final String action) {
+
+        final Intent intent = new Intent(action);
+        mAppContext.sendBroadcast(intent);
+    }
 }
 
