@@ -36,6 +36,8 @@ public class BluetoothHelper {
         GATT_CONNECTING(1),
         GATT_CONNECTED(2),
         GATT_DISCONNECTED(4),
+        BLE_SCANNING(8),
+        BLE_NOT_SCANNING(16),
         BOND_BONDED(128),
         BOND_BONDING(256),
         BOND_UNBONDED(512);
@@ -64,8 +66,10 @@ public class BluetoothHelper {
     private static final BluetoothHelper instance = new BluetoothHelper();
 
     private BluetoothAdapter mBluetoothAdapter;
-    private boolean mScanning;
     private Handler mHandler;
+
+    private int mInterval = 8000; // 1 seconds by default, can be changed later
+    private Handler mTimerHandler;
 
     private BluetoothLeScanner mBleScanner;
     private Context mAppContext;
@@ -101,42 +105,64 @@ public class BluetoothHelper {
             instance.mAppContext.registerReceiver(instance.mPairingRequestReceiver, requestFilter);
 
             instance.mHandler = new Handler();
+
+            // Start a timer to check BLE connection periodically.
+            instance.mTimerHandler = new Handler();
+            instance.startRepeatingTask();
         }
 
         // Set bonded state so we know if we need to rebind
         instance.setBondedState(instance.deviceBonded() ? eState.BOND_BONDED : eState.BOND_UNBONDED);
-
-        // If we are bonded then perhaps we can just GATT connect
-        if (instance.deviceBonded() && !instance.gattConnected() && !instance.gattConnecting()) {
-            Log.i("BluetoothHelper", ".getInstance.already Bonded");
-            BluetoothDevice device = instance.getBondedDevice();
-            if (null != device) {
-                // Start Async connection to GATT.  See gattCallback for callback
-                Log.i("BluetoothHelper", ".getInstance-device.connectGatt()");
-                instance.mGatt = device.connectGatt(instance.mAppContext, false, instance.gattCallback);
-                instance.setGATTState(eState.GATT_CONNECTING);
-                return instance;
-            }
-        }
-
-        // Make sure we are connected and bonded.  Don't do it if we are in the process of bonding.
-        Log.i("BluetoothHelper", ".gattConnecting=" + instance.gattConnecting());
-        if (!instance.gattConnecting()) {
-            // Only try to scan again if we are not in the middle of scan or connect
-            if (!instance.deviceBonded() || !instance.gattConnected()) {
-                Log.i("BluetoothHelper", ".deviceBonded=" + instance.deviceBonded() +
-                        ", gattConnected=" + instance.gattConnected());
-                // Stop the scan and try again
-                if (Build.VERSION.SDK_INT >= 21) {
-                    instance.mBleScanner = instance.mBluetoothAdapter.getBluetoothLeScanner();
-                    instance.mBleScanner.stopScan(instance.mScanCallback);
-                    instance.scanLeDevice(true);
-                }
-            }
-        }
+//
+//        // If we are bonded then perhaps we can just GATT connect
+//        if (instance.deviceBonded() && !instance.gattConnected() && !instance.gattConnecting()) {
+//            Log.i("BluetoothHelper", ".getInstance.already Bonded");
+//            BluetoothDevice device = instance.getBondedDevice();
+//            if (null != device) {
+//                // Start Async connection to GATT.  See gattCallback for callback
+//                Log.i("BluetoothHelper", ".getInstance-device.connectGatt()");
+//                instance.mGatt = device.connectGatt(instance.mAppContext, false, instance.gattCallback);
+//                instance.setGATTState(eState.GATT_CONNECTING);
+//                return instance;
+//            }
+//        }
+//
+//        // Make sure we are connected and bonded.  Don't do it if we are in the process of bonding.
+//        Log.i("BluetoothHelper", ".gattConnecting=" + instance.gattConnecting());
+//        if (!instance.gattConnecting()) {
+//            // Only try to scan again if we are not in the middle of scan or connect
+//            if (!instance.deviceBonded() || !instance.gattConnected()) {
+//                Log.i("BluetoothHelper", ".deviceBonded=" + instance.deviceBonded() +
+//                        ", gattConnected=" + instance.gattConnected());
+//                // Stop the scan and try again
+//                if (Build.VERSION.SDK_INT >= 21) {
+//                    instance.mBleScanner = instance.mBluetoothAdapter.getBluetoothLeScanner();
+//                    instance.mBleScanner.stopScan(instance.mScanCallback);
+//                    instance.scanLeDevice(true);
+//                }
+//            }
+//        }
 
         Log.i("BluetoothHelper", ".getInstance():EXIT");
         return instance;
+    }
+
+    public void connectToBLEDevice() {
+        Log.i("BluetoothHelper", ".connectToBLEDevice():ENTER");
+        // Make sure we are not connected before we do this
+        if (!gattConnected() && !gattConnecting() && !scanning()) {
+            // Stop the scan and try again
+            if (Build.VERSION.SDK_INT >= 21) {
+                mBleScanner = mBluetoothAdapter.getBluetoothLeScanner();
+                mBleScanner.stopScan(mScanCallback);
+//                Log.i("BluetoothHelper", ".connectToBLEDevice():scanLeDevice");
+                scanLeDevice(true);
+            }
+        }
+        else {
+            Log.i("BluetoothHelper", ".connectToBLEDevice():ALREADY SCANNING && GATT CONNECTED");
+        }
+        Log.i("BluetoothHelper", ".connectToBLEDevice():EXIT");
     }
 
     public BluetoothGatt gatt() {
@@ -179,6 +205,10 @@ public class BluetoothHelper {
 
     private boolean gattConnecting() {
         return (instance.mState & eState.GATT_CONNECTING.value()) > 0;
+    }
+
+    private boolean scanning() {
+        return (instance.mState & eState.BLE_SCANNING.value()) > 0;
     }
 
     // Make sure one of the bonded devices is the one we are looking for
@@ -284,7 +314,7 @@ public class BluetoothHelper {
                         Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.stopScan");
                         mBleScanner.stopScan(mScanCallback);
                         // Indicate we have stopped scanning
-                        // setDeviceState(eState.DEVICE_DISCONNECTED);
+                        setScanningState(eState.BLE_NOT_SCANNING);
                     }
                 }
             }, SCAN_PERIOD);
@@ -303,6 +333,7 @@ public class BluetoothHelper {
                         .build();
 
                 mBleScanner.startScan(filtersList, settings, mScanCallback);
+                setScanningState(eState.BLE_SCANNING);
             }
         } else {
             if (Build.VERSION.SDK_INT < 21) {
@@ -310,6 +341,7 @@ public class BluetoothHelper {
             } else {
                 Log.i("BluetoothHelper", ".scanLeDevice():mBleScanner.stopScan");
                 mBleScanner.stopScan(mScanCallback);
+                setScanningState(eState.BLE_NOT_SCANNING);
             }
         }
         Log.i("BluetoothHelper", ".scanLeDevice() : EXIT");
@@ -391,6 +423,13 @@ public class BluetoothHelper {
         mState &= ~(eState.BOND_BONDED.value());
         mState &= ~(eState.BOND_BONDING.value());
         mState &= ~(eState.BOND_UNBONDED.value());
+        mState |= state.value();
+    }
+
+    private void setScanningState(eState state) {
+        // Clear down bits
+        mState &= ~(eState.BLE_SCANNING.value());
+        mState &= ~(eState.BLE_NOT_SCANNING.value());
         mState |= state.value();
     }
 
@@ -632,13 +671,41 @@ public class BluetoothHelper {
         bondedState += ((mState & eState.BOND_BONDED.value()) == eState.BOND_BONDED.value()) ? "BONDED" : "";
         bondedState += ((mState & eState.BOND_BONDING.value()) == eState.BOND_BONDING.value()) ? "BONDING" : "";
         Log.i(TAG,"mState:0b" + Integer.toBinaryString(mState));
-        Log.i(TAG,"BONDED:" + bondedState);
+        Log.i(TAG,"BOND:" + bondedState);
 
         String gattState = "";
         gattState += ((mState & eState.GATT_DISCONNECTED.value()) == eState.GATT_DISCONNECTED.value()) ? "DISCONNECTED" : "";
         gattState += ((mState & eState.GATT_CONNECTED.value()) == eState.GATT_CONNECTED.value()) ? "CONNECTED" : "";
         gattState += ((mState & eState.GATT_CONNECTING.value()) == eState.GATT_CONNECTING.value()) ? "CONNECTING" : "";
         Log.i(TAG,"GATT:" + gattState);
+
+        String scanningState = "";
+        scanningState += ((mState & eState.BLE_SCANNING.value()) == eState.BLE_SCANNING.value()) ? "SCANNING" : "";
+        scanningState += ((mState & eState.BLE_NOT_SCANNING.value()) == eState.BLE_NOT_SCANNING.value()) ? "NOT SCANNING" : "";
+        Log.i(TAG,"SCAN:" + scanningState);
     }
+
+    Runnable mStatusChecker = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                printConnectionStatus();
+                connectToBLEDevice();
+            } finally {
+                // 100% guarantee that this always happens, even if
+                // your update method throws an exception
+                mTimerHandler.postDelayed(mStatusChecker, mInterval);
+            }
+        }
+    };
+
+    private void startRepeatingTask() {
+        mStatusChecker.run();
+    }
+
+    private void stopRepeatingTask() {
+        mTimerHandler.removeCallbacks(mStatusChecker);
+    }
+
 }
 

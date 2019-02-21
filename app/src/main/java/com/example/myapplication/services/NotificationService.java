@@ -18,8 +18,6 @@ import com.example.myapplication.utils.BluetoothHelper;
 public class NotificationService extends NotificationListenerService {
 
     Context context;
-    private int mInterval = 10000; // 1 seconds by default, can be changed later
-    private Handler mTimerHandler;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -35,8 +33,6 @@ public class NotificationService extends NotificationListenerService {
         // Make sure we have initialized the bluetooth helper as this service
         // has prob started without the app running.
         BluetoothHelper ble = BluetoothHelper.getInstance(context);
-        mTimerHandler = new Handler();
-        startRepeatingTask();
 
         super.onCreate();
     }
@@ -82,26 +78,4 @@ public class NotificationService extends NotificationListenerService {
     public void onNotificationRemoved(StatusBarNotification sbn) {
         Log.i("Msg","Notification Removed");
     }
-
-    Runnable mStatusChecker = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                BluetoothHelper.getInstance(getApplicationContext()).printConnectionStatus();
-            } finally {
-                // 100% guarantee that this always happens, even if
-                // your update method throws an exception
-                mTimerHandler.postDelayed(mStatusChecker, mInterval);
-            }
-        }
-    };
-
-    private void startRepeatingTask() {
-        mStatusChecker.run();
-    }
-
-    private void stopRepeatingTask() {
-        mTimerHandler.removeCallbacks(mStatusChecker);
-    }
-
 }

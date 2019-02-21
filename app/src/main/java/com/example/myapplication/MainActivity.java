@@ -72,8 +72,8 @@ public class MainActivity extends AppCompatActivity {
 
         // Make sure we have initialized the bluetooth helper
         BluetoothHelper ble = BluetoothHelper.getInstance(getApplicationContext());
-        mTimerHandler = new Handler();
-        startRepeatingTask();
+//        mTimerHandler = new Handler();
+//        startRepeatingTask();
 
     }
 

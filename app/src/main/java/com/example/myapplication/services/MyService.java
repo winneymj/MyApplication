@@ -89,7 +89,7 @@ public class MyService extends Service {
 
         BluetoothHelper btHelperInstance = BluetoothHelper.getInstance(getApplicationContext());
 
-        BluetoothHelper.getInstance(getApplicationContext()).writeDataToBtCharacteristic();
+//        BluetoothHelper.getInstance(getApplicationContext()).writeDataToBtCharacteristic();
 
         // Start connecting to device.  Wait for GATT connected event
 //        btHelperInstance.connectToDevice();
@@ -136,7 +136,7 @@ public class MyService extends Service {
                 // Temporary code
 //                BluetoothHelper.getInstance(getApplicationContext()).discoverServices();
                 // Only connect send out data when we have a connection
-                BluetoothHelper.getInstance(getApplicationContext()).writeDataToBtCharacteristic();
+//                BluetoothHelper.getInstance(getApplicationContext()).writeDataToBtCharacteristic();
             } else if (BluetoothHelper.GATT_DISCONNECTED_INTENT.equals(intent.getAction())) {
                 Log.i(TAG,"mGattBroadcastReceiver.onReceive:" + intent.getAction());
             }
