@@ -80,7 +80,7 @@ public class BluetoothHelper {
     private int mState = eState.BOND_UNBONDED.value() | eState.GATT_DISCONNECTED.value();
 
     // Stops scanning after 10 seconds.
-    private static final long SCAN_PERIOD = 10000;
+    private static final long SCAN_PERIOD = 20000;
     private final static int REQUEST_ENABLE_BT = 1;
 
     //private constructor to avoid client applications to use constructor
@@ -152,8 +152,10 @@ public class BluetoothHelper {
 
     public void connectToBLEDevice() {
         Log.i("BluetoothHelper", ".connectToBLEDevice():ENTER");
-        // Make sure we are not connected before we do this
-        if (!gattConnected() && !gattConnecting() && !scanning()) {
+        // Make sure we are not connected before we do this or if we are connected but not bonded
+        setBondedState(deviceBonded() ? eState.BOND_BONDED : eState.BOND_UNBONDED);
+
+        if ((!gattConnected() && !gattConnecting() && !scanning()) || (gattConnected() && !deviceBonded())) {
             // Stop the scan and try again
             if (Build.VERSION.SDK_INT >= 21) {
                 mBleScanner = mBluetoothAdapter.getBluetoothLeScanner();

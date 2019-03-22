@@ -89,7 +89,7 @@ public class MyService extends Service {
 
         BluetoothHelper btHelperInstance = BluetoothHelper.getInstance(getApplicationContext());
 
-//        BluetoothHelper.getInstance(getApplicationContext()).writeDataToBtCharacteristic();
+        btHelperInstance.writeDataToBtCharacteristic();
 
         // Start connecting to device.  Wait for GATT connected event
 //        btHelperInstance.connectToDevice();
