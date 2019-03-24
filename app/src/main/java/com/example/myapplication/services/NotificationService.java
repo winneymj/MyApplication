@@ -53,22 +53,32 @@ public class NotificationService extends NotificationListenerService {
         String title = (null != cs) ? cs.toString() : "";
         cs = extras.getCharSequence(Notification.EXTRA_TEXT);
         String text = (null != cs) ? cs.toString() : "";
+        cs = extras.getCharSequence("android.bigText");
+        String body = (null != cs) ? cs.toString() : "";
 
         Log.i("Package",pack);
         Log.i("Ticker",ticker);
         Log.i("Title",title);
         Log.i("Text",text);
+        Log.i("Body",body);
 
         Intent msgrcv = new Intent("Msg");
         msgrcv.putExtra("package", pack);
         msgrcv.putExtra("ticker", ticker);
         msgrcv.putExtra("title", title);
         msgrcv.putExtra("text", text);
+        msgrcv.putExtra("body", body);
 
 //        LocalBroadcastManager.getInstance(context).sendBroadcast(msgrcv);
 
         // Send notification to the BLE service to send the message to remote _device.
         Intent intent = new Intent(this, MyService.class);
+        intent.putExtra("package", pack);
+        intent.putExtra("ticker", ticker);
+        intent.putExtra("title", title);
+        intent.putExtra("text", text);
+        intent.putExtra("body", body);
+
         ComponentName service = startService(intent);
         Log.i("MainActivity.onCreateView:service=", (service != null) ? service.toString() : "null");
     }
