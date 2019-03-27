@@ -41,46 +41,55 @@ public class NotificationService extends NotificationListenerService {
     public void onNotificationPosted(StatusBarNotification sbn) {
         Log.i("NotificationService.onNotificationPosted", ":Enter");
 
+        if (null != sbn) {
+            // Send notification to the BLE service to send the message to remote _device.
+            Intent intent = new Intent(this, MyService.class);
 
-        String pack = sbn.getPackageName();
-        CharSequence cs = sbn.getNotification().tickerText;
-        String ticker = (null != cs) ? cs.toString() : "";
-        Bundle extras = sbn.getNotification().extras;
+            String pack = sbn.getPackageName();
+            intent.putExtra("sender", pack);
+            Log.i("package", pack);
 
-        Log.i("NotificationService.onNotificationPosted:extras.toString()", extras.toString());
+            CharSequence cs = sbn.getNotification().tickerText;
+            if (null != cs) {
+                intent.putExtra("ticker", cs.toString());
+                Log.i("Ticker", cs.toString());
+            }
 
-        cs = extras.getCharSequence(Notification.EXTRA_TEXT);
-        String title = (null != cs) ? cs.toString() : "";
-        cs = extras.getCharSequence(Notification.EXTRA_TEXT);
-        String text = (null != cs) ? cs.toString() : "";
-        cs = extras.getCharSequence("android.bigText");
-        String body = (null != cs) ? cs.toString() : "";
+            Bundle extras = sbn.getNotification().extras;
 
-        Log.i("Package",pack);
-        Log.i("Ticker",ticker);
-        Log.i("Title",title);
-        Log.i("Text",text);
-        Log.i("Body",body);
+            Log.i("NotificationService.onNotificationPosted:extras.toString()", extras.toString());
 
-        Intent msgrcv = new Intent("Msg");
-        msgrcv.putExtra("package", pack);
-        msgrcv.putExtra("ticker", ticker);
-        msgrcv.putExtra("title", title);
-        msgrcv.putExtra("text", text);
-        msgrcv.putExtra("body", body);
+            cs = extras.getCharSequence(Notification.EXTRA_TITLE);
+            if (null != cs) {
+                intent.putExtra("from", cs.toString());
+                Log.i("Title", cs.toString());
+            }
 
-//        LocalBroadcastManager.getInstance(context).sendBroadcast(msgrcv);
+            cs = extras.getCharSequence(Notification.EXTRA_TEXT);
+            if (null != cs) {
+                intent.putExtra("subject", cs.toString());
+                Log.i("Text", cs.toString());
+            }
 
-        // Send notification to the BLE service to send the message to remote _device.
-        Intent intent = new Intent(this, MyService.class);
-        intent.putExtra("package", pack);
-        intent.putExtra("ticker", ticker);
-        intent.putExtra("title", title);
-        intent.putExtra("text", text);
-        intent.putExtra("body", body);
+            cs = extras.getCharSequence("android.bigText");
+            if (null != cs) {
+                intent.putExtra("body", cs.toString());
+                Log.i("Body", cs.toString());
+            }
 
-        ComponentName service = startService(intent);
-        Log.i("MainActivity.onCreateView:service=", (service != null) ? service.toString() : "null");
+
+            //        Intent msgrcv = new Intent("Msg");
+            //        msgrcv.putExtra("package", pack);
+            //        msgrcv.putExtra("ticker", ticker);
+            //        msgrcv.putExtra("title", title);
+            //        msgrcv.putExtra("text", text);
+            //        msgrcv.putExtra("body", body);
+
+            //        LocalBroadcastManager.getInstance(context).sendBroadcast(msgrcv);
+
+            ComponentName service = startService(intent);
+            Log.i("MainActivity.onCreateView:service=", (service != null) ? service.toString() : "null");
+        }
     }
 
     @Override

@@ -17,6 +17,7 @@ import android.util.Log;
 import android.widget.Toast;
 
 import com.example.myapplication.utils.BluetoothHelper;
+import com.example.myapplication.utils.DataFormat;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -89,8 +90,27 @@ public class MyService extends Service {
 
         BluetoothHelper btHelperInstance = BluetoothHelper.getInstance(getApplicationContext());
 
-        String ticker = intent.getStringExtra("ticker");
-        btHelperInstance.writeDataToBtCharacteristic(ticker);
+        String sender = (intent.hasExtra("sender")) ? intent.getStringExtra("sender") : "";
+        String from = (intent.hasExtra("from")) ? intent.getStringExtra("from") : "";
+        String subject = (intent.hasExtra("subject")) ? intent.getStringExtra("subject") : "";
+        String body = (intent.hasExtra("body")) ? intent.getStringExtra("body") : null;
+
+        btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("1"+ from));
+        try {
+            Thread.sleep(100);
+            btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("2"+ subject));
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        if (null != body) {
+            try {
+                Thread.sleep(100);
+                btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("3"+ body));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
 
         // Start connecting to device.  Wait for GATT connected event
 //        btHelperInstance.connectToDevice();

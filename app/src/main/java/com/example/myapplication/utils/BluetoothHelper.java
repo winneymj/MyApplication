@@ -238,7 +238,6 @@ public class BluetoothHelper {
                     Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getCharacteristic(()");
                     BluetoothGattCharacteristic characteristic = mSVC.getCharacteristic(UUID_WRITE_CHARACTERISTIC);
                     if (null != characteristic) {
-                        String myString = "marks message";
                         byte[] b = ticker.getBytes();
                         characteristic.setValue(b);
                         characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
