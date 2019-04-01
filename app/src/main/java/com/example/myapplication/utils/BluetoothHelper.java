@@ -217,7 +217,7 @@ public class BluetoothHelper {
     }
 
     // Make sure one of the bonded devices is the one we are looking for
-    public boolean writeDataToBtCharacteristic(final String ticker) {
+    public boolean writeDataToBtCharacteristic(final byte[] data) {
         Log.i("BluetoothHelper", ".writeDataToBtCharacteristic ENTER");
 
         try {
@@ -238,8 +238,7 @@ public class BluetoothHelper {
                     Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getCharacteristic(()");
                     BluetoothGattCharacteristic characteristic = mSVC.getCharacteristic(UUID_WRITE_CHARACTERISTIC);
                     if (null != characteristic) {
-                        byte[] b = ticker.getBytes();
-                        characteristic.setValue(b);
+                        characteristic.setValue(data);
                         characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
 
                         if (mGatt.writeCharacteristic(characteristic)) {

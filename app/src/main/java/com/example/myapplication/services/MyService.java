@@ -16,6 +16,7 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.example.myapplication.utils.BlockTransferClient;
 import com.example.myapplication.utils.BluetoothHelper;
 import com.example.myapplication.utils.DataFormat;
 
@@ -92,26 +93,43 @@ public class MyService extends Service {
 
         String sender = (intent.hasExtra("sender")) ? intent.getStringExtra("sender") : "";
         String from = (intent.hasExtra("from")) ? intent.getStringExtra("from") : "";
-        String subject = (intent.hasExtra("subject")) ? intent.getStringExtra("subject") : "";
+        String subject = (intent.hasExtra("subject")) ? intent.getStringExtra("subject") : null;
         String body = (intent.hasExtra("body")) ? intent.getStringExtra("body") : null;
 
-        btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("1"+ from));
-        try {
-            Thread.sleep(100);
-            btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("2"+ subject));
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        Log.d("MyService", ".onStartCommand: " + DataFormat.TrimText("1" + sender));
 
-        if (null != body) {
-            try {
-                Thread.sleep(100);
-                btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("3"+ body));
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
+        BlockTransferClient btc = new BlockTransferClient(getApplicationContext());
 
+        btc.sendData("testing a very long string to see if works");
+        btc.sendData("smaller test");
+
+//        btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("1" + sender));
+//        btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("2" + from));
+//        if (null != subject) {
+//            try {
+//                Thread.sleep(100);
+//                btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("3" + subject));
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        }
+//
+//        if (null != body) {
+//            try {
+//                Thread.sleep(100);
+//                btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("4"+ body));
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        }
+//
+//        // Send finished by sending a 9
+//        try {
+//            Thread.sleep(100);
+//            btHelperInstance.writeDataToBtCharacteristic("9Done");
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
         // Start connecting to device.  Wait for GATT connected event
 //        btHelperInstance.connectToDevice();
 
