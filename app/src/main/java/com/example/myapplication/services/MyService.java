@@ -3,7 +3,6 @@ package com.example.myapplication.services;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -16,7 +15,6 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.widget.Toast;
 
-import com.example.myapplication.utils.BlockTransferClient;
 import com.example.myapplication.utils.BluetoothHelper;
 import com.example.myapplication.utils.DataFormat;
 
@@ -25,9 +23,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.UUID;
 import java.util.Vector;
-
-import static android.bluetooth.BluetoothGattCharacteristic.FORMAT_SINT16;
-import static android.bluetooth.BluetoothGattCharacteristic.PERMISSION_WRITE;
 
 public class MyService extends Service {
     public MyService() {
@@ -98,10 +93,8 @@ public class MyService extends Service {
 
         Log.d("MyService", ".onStartCommand: " + DataFormat.TrimText("1" + sender));
 
-        BlockTransferClient btc = new BlockTransferClient(getApplicationContext());
-
-        btc.sendData("testing a very long string to see if works");
-        btc.sendData("smaller test");
+        btHelperInstance.sendBLEData("testing a very long string to see if works");
+        btHelperInstance.sendBLEData("smaller test");
 
 //        btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("1" + sender));
 //        btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("2" + from));

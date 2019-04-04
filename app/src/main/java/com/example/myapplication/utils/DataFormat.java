@@ -8,7 +8,9 @@ import java.util.ArrayList;
  */
 public class DataFormat {
 
-    private static final int MAX_LENGTH = 240;
+    public final static int BTS_MTU_SIZE_DEFAULT = 20;
+    public final static int BLOCK_HEADER_SIZE = 3;
+    private static final int MAX_LENGTH = BTS_MTU_SIZE_DEFAULT - BLOCK_HEADER_SIZE;;
 //    private static final int MAX_BYTES = 16;
     /**
      *
