@@ -1,6 +1,7 @@
 package com.example.myapplication.utils;
 
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 
 /**
@@ -53,6 +54,27 @@ public class DataFormat {
 
         return strings.toArray(new String[strings.size()]);
 
+    }
+
+    /**
+     *
+     * @param tooLong is a string that has too many characters to be sent via bluetooth Gatt.
+     *                If the length is greater than {@code MAX_BYTES}, cut it and add it to an
+     *                array so it can be sent in separate packets.
+     * @return a new array of byte arrays
+     */
+    public static ArrayList<byte[]> ToUTF8ByteArray(String tooLong){
+        ArrayList<byte[]> bytes = new ArrayList<byte[]>();
+        String temp = "";
+        //20 is the max number of bytes that can be sent to ble device
+        while(tooLong.length() > MAX_LENGTH){
+            temp = tooLong.substring(0, Math.min(tooLong.length(), MAX_LENGTH));
+            bytes.add(temp.getBytes(StandardCharsets.UTF_8));
+            tooLong = tooLong.substring(temp.length(),tooLong.length());
+        }
+        bytes.add(tooLong.getBytes(StandardCharsets.UTF_8));
+
+        return bytes;
     }
 
     /**

@@ -93,8 +93,18 @@ public class MyService extends Service {
 
         Log.d("MyService", ".onStartCommand: " + DataFormat.TrimText("1" + sender));
 
-        btHelperInstance.sendBLEData("testing a very long string to see if works");
-        btHelperInstance.sendBLEData("smaller test");
+//        btHelperInstance.sendBLEData("testing a very long string to see if works");
+//        btHelperInstance.sendBLEData("smaller test");
+        StringBuffer buffer = new StringBuffer();
+        buffer.append(sender).append("|").append(from);
+        if (null != subject)
+            buffer.append("|").append(subject);
+        if (null != body)
+            buffer.append("|").append(body);
+
+        btHelperInstance.sendBLEData(buffer.toString());
+
+        Log.d("MyService", ".onStartCommand:buffer=" + buffer.toString());
 
 //        btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("1" + sender));
 //        btHelperInstance.writeDataToBtCharacteristic(DataFormat.TrimText("2" + from));

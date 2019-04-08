@@ -1,6 +1,10 @@
 package com.example.myapplication;
 
+import com.example.myapplication.utils.DataFormat;
+
 import org.junit.Test;
+
+import java.util.ArrayList;
 
 import static org.junit.Assert.*;
 
@@ -11,7 +15,14 @@ import static org.junit.Assert.*;
  */
 public class ExampleUnitTest {
     @Test
-    public void addition_isCorrect() {
-        assertEquals(4, 2 + 2);
+    public void testDataFormat() {
+        ArrayList<byte[]> res = DataFormat.ToUTF8ByteArray("Let's do it very long Let's end it");
+        assertEquals(res.size(), 2);
+        assertEquals(res.get(0).length, 17);
+        assertEquals(res.get(1).length, 17);
+        byte[] data = res.get(0);
+        for (byte chr: data) {
+            System.out.print(String.format("0x%02X ", chr));
+        }
     }
 }

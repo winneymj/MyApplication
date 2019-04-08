@@ -23,12 +23,18 @@ import android.os.Handler;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static android.bluetooth.BluetoothDevice.BOND_BONDED;
+import static java.util.Locale.US;
 
 public class BluetoothHelper {
 
@@ -71,6 +77,7 @@ public class BluetoothHelper {
 //            "com.example.bluetooth.le.ACTION_GATT_SERVICES_DISCOVERED";
     private final static String MACAddress = "E9:0C:48:22:6A:AC";
     private static final long SCAN_PERIOD = 20000;
+    private static final long CHARACTERISTIC_WRITE_WAIT = 2000;
 
     private static final BluetoothHelper instance = new BluetoothHelper();
 
@@ -87,7 +94,8 @@ public class BluetoothHelper {
     /**
      * Lock used in synchronization purposes
      */
-    private final Object mLock = new Object();
+    final Lock mRlock = new ReentrantLock();
+    final Condition writeCondition  = mRlock.newCondition();
 
     private int mOutgoingTotalFragments = 0;
     private int mMaxBlockPayloadSize = BTS_MTU_SIZE_DEFAULT - BLOCK_HEADER_SIZE;
@@ -233,52 +241,62 @@ public class BluetoothHelper {
     public boolean writeDataToBtCharacteristic(final byte[] data) {
         Log.i("BluetoothHelper", ".writeDataToBtCharacteristic ENTER");
 
+        if (null == mBluetoothAdapter) {
+            Log.i("BluetoothHelper", ".writeDataToBtCharacteristic. null == mBluetoothAdapter");
+            return false;
+        }
+
         try {
             BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(MACAddress);
             Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getRemoteDevice()");
-//            mGatt = device.connectGatt(mAppContext, false, gattCallback);
-//            Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.connectGatt(()");
 
-//        BluetoothGattCharacteristic characteristic = new BluetoothGattCharacteristic(
-//                UUID_WRITE_CHARACTERISTIC,
-//                BluetoothGattCharacteristic.PROPERTY_WRITE, /* FORMAT_SINT16*/
-//                BluetoothGattCharacteristic.PERMISSION_WRITE);
+            if (null == mGatt) {
+                Log.e("BluetoothHelper", ".writeDataToBtCharacteristic null == mGatt");
+                return false;
+            }
+            BluetoothGattService mSVC = mGatt.getService(UUID_SERVICE);
+            Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getService()");
+            if (null == mSVC) {
+                Log.e("BluetoothHelper", ".writeDataToBtCharacteristic mGatt.getService == null");
+                return false;
+            }
+            Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getCharacteristic(()");
+            BluetoothGattCharacteristic characteristic = mSVC.getCharacteristic(UUID_WRITE_CHARACTERISTIC);
+            if (null == characteristic) {
+                Log.e("BluetoothHelper", ".writeDataToBtCharacteristic mSVC.getCharacteristic == null");
+                return false;
+            }
 
-            if (null != mGatt) {
-                BluetoothGattService mSVC = mGatt.getService(UUID_SERVICE);
-                Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getService()");
-                if (null != mSVC) {
-                    Log.i("BluetoothHelper", ".writeDataToBtCharacteristic.getCharacteristic(()");
-                    BluetoothGattCharacteristic characteristic = mSVC.getCharacteristic(UUID_WRITE_CHARACTERISTIC);
-                    if (null != characteristic) {
-                        characteristic.setValue(data);
-                        characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+            for (byte chr: data) {
+//                Log.d("BluetoothHelper", String.valueOf(chr));
+                Log.d("BluetoothHelper", String.format("%02X ", chr));
+            }
 
-                        // We have to wait for confirmation
-                        try {
-                            synchronized (mLock) {
-                                if (mGatt.writeCharacteristic(characteristic)) {
-                                    Log.i("BluetoothHelper", ".writeDataToBtCharacteristic success");
+            characteristic.setValue(data);
+            characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
 
-                                    Log.d("BluetoothHelper", ".writeDataToBtCharacteristic:wait()");
-                                    mLock.wait();
-                                    Log.d("BluetoothHelper", ".writeDataToBtCharacteristic:Woken");
-                                } else {
-                                    Log.e("BluetoothHelper", ".writeDataToBtCharacteristic failed");
-                                    return false;
-                                }
-                            }
-                        } catch (final InterruptedException e) {
-                            Log.d("BluetoothHelper", ".writeDataToBtCharacteristic:Sleeping interrupted");
-                        }
-                    } else {
-                        Log.e("BluetoothHelper", ".writeDataToBtCharacteristic mSVC.getCharacteristic == null");
+            // We have to wait for confirmation
+            try {
+                mRlock.lock();
+                if (mGatt.writeCharacteristic(characteristic)) {
+                    Log.i("BluetoothHelper", ".writeDataToBtCharacteristic success");
+
+                    Log.d("BluetoothHelper", ".writeDataToBtCharacteristic:wait() for max 2 sec");
+                    if (!writeCondition.await(CHARACTERISTIC_WRITE_WAIT, TimeUnit.MILLISECONDS)) {
+                        // We timed out so clean up
+                        Log.d("BluetoothHelper", ".writeDataToBtCharacteristic:TIMED OUT");
                         return false;
                     }
+                    Log.d("BluetoothHelper", ".writeDataToBtCharacteristic:Woken");
                 } else {
-                    Log.e("BluetoothHelper", ".writeDataToBtCharacteristic mGatt.getService == null");
+                    Log.e("BluetoothHelper", ".writeDataToBtCharacteristic failed");
                     return false;
                 }
+            } catch (InterruptedException e) {
+                Log.d("BluetoothHelper", ".writeDataToBtCharacteristic:lock.InterruptedException!");
+            } finally {
+                mRlock.unlock();
+                Log.d("BluetoothHelper", ".writeDataToBtCharacteristic:lock.unlock()");
             }
         }catch (IllegalArgumentException ia)
         {
@@ -511,28 +529,33 @@ public class BluetoothHelper {
         writeBuffer[9] = (byte)(mOutgoingTotalFragments >> 16);
 
         // Now write header block.
-        writeDataToBtCharacteristic(writeBuffer);
+        if (!writeDataToBtCharacteristic(writeBuffer)) {
+            Log.d("BluetoothHelper", ".writeDataToBtCharacteristic: FAILED");
+        }
 
         // Now write data blocks
         // Split the data bytes into smaller parts if needed.
-        String[] dataStrArray = DataFormat.ToStringArray(data);
+//        String[] dataStrArray = DataFormat.ToStringArray(data);
+        ArrayList<byte[]> dataArray = DataFormat.ToUTF8ByteArray(data);
         int offset = 0;
 
-        for (String dataStr: dataStrArray) {
-            int strLen = BLOCK_HEADER_SIZE + dataStr.length();
+        for (byte[] dataStr: dataArray) {
+            int strLen = BLOCK_HEADER_SIZE + dataStr.length;
             writeBuffer = new byte[strLen];
 
             writeBuffer[0] = BT_TYPE_WRITE_DIRECT << 4;
             writeBuffer[1] = (byte)offset;
             writeBuffer[2] = (byte)(offset >> 8);
 
-            Log.d("BluetoothHelper", "dataStr.length=" + dataStr.length() + ",offset=" + offset);
+            Log.d("BluetoothHelper", "dataStr=" + dataStr + ",dataStr.length=" + dataStr.length + ",offset=" + offset);
 
-            System.arraycopy(dataStr.getBytes(), 0, writeBuffer, 3, dataStr.length());
+            System.arraycopy(dataStr, 0, writeBuffer, 3, dataStr.length);
 
-            writeDataToBtCharacteristic(writeBuffer);
+            if (!writeDataToBtCharacteristic(writeBuffer)) {
+                Log.d("BluetoothHelper", ".writeDataToBtCharacteristic: FAILED");
+            }
 
-            offset += dataStr.length();
+            offset += dataStr.length;
         }
 
         Log.d("BluetoothHelper", ".sendBLEData: EXIT");
@@ -644,13 +667,16 @@ public class BluetoothHelper {
                 return;
             }
             Log.d("onCharacteristicWrite", "GATT_SUCCESS");
+
             // notify waiting thread
-            synchronized (mLock) {
-//                sendLogBroadcast(LOG_LEVEL_WARNING, "Upload terminated");
-                Log.d("onCharacteristicWrite", "mLock.notifyAll()");
-                mLock.notifyAll();
-                return;
-            }//            super.onCharacteristicWrite(gatt, characteristic, status);
+            mRlock.lock();
+            try {
+                writeCondition.signal();
+            } catch (Exception e) {
+                Log.d("onCharacteristicWrite", "writeCondition.signal(): Exception!");
+            } finally {
+                mRlock.unlock();
+            }
         }
     };
 
