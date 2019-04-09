@@ -502,9 +502,19 @@ public class BluetoothHelper {
     public boolean sendBLEData(final String data) {
         Log.d("BluetoothHelper", ".sendBLEData: ENTER");
 
+        // Now write data blocks
+        // Split the data bytes into smaller parts if needed.
+        mOutgoingTotalFragments = 0;
+        ArrayList<byte[]> dataArray = DataFormat.ToUTF8ByteArray(data);
+
+        // Total the number of bytes to send.
+        for (byte[] dataStr: dataArray) {
+            mOutgoingTotalFragments += dataStr.length;
+        }
+
         //  Find the total number of fragments needed to transmit the block
         //  based on the MTU size minus payload header.
-        mOutgoingTotalFragments = (data.length() + (mMaxBlockPayloadSize - 1)) / mMaxBlockPayloadSize;
+        mOutgoingTotalFragments = (mOutgoingTotalFragments + (mMaxBlockPayloadSize - 1)) / mMaxBlockPayloadSize;
 
         Log.d("BluetoothHelper", "data.length=" + data.length() + ",outgoingTotalFragments=" + mOutgoingTotalFragments + ",maxBlockPayloadSize=" +  mMaxBlockPayloadSize);
 
@@ -530,13 +540,9 @@ public class BluetoothHelper {
 
         // Now write header block.
         if (!writeDataToBtCharacteristic(writeBuffer)) {
-            Log.d("BluetoothHelper", ".writeDataToBtCharacteristic: FAILED");
+            Log.w("BluetoothHelper", ".writeDataToBtCharacteristic: FAILED");
         }
 
-        // Now write data blocks
-        // Split the data bytes into smaller parts if needed.
-//        String[] dataStrArray = DataFormat.ToStringArray(data);
-        ArrayList<byte[]> dataArray = DataFormat.ToUTF8ByteArray(data);
         int offset = 0;
 
         for (byte[] dataStr: dataArray) {
@@ -552,7 +558,7 @@ public class BluetoothHelper {
             System.arraycopy(dataStr, 0, writeBuffer, 3, dataStr.length);
 
             if (!writeDataToBtCharacteristic(writeBuffer)) {
-                Log.d("BluetoothHelper", ".writeDataToBtCharacteristic: FAILED");
+                Log.w("BluetoothHelper", ".writeDataToBtCharacteristic: FAILED");
             }
 
             offset += dataStr.length;
