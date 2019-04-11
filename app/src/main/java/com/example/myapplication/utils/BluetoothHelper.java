@@ -267,11 +267,10 @@ public class BluetoothHelper {
                 return false;
             }
 
-            for (byte chr: data) {
-//                Log.d("BluetoothHelper", String.valueOf(chr));
-                Log.d("BluetoothHelper", String.format("%02X ", chr));
-            }
-
+//            for (byte chr: data) {
+//                Log.d("BluetoothHelper", String.format("%02X ", chr));
+//            }
+//
             characteristic.setValue(data);
             characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
 
@@ -507,16 +506,19 @@ public class BluetoothHelper {
         mOutgoingTotalFragments = 0;
         ArrayList<byte[]> dataArray = DataFormat.ToUTF8ByteArray(data);
 
+        int totalDataSize = 0;
         // Total the number of bytes to send.
         for (byte[] dataStr: dataArray) {
-            mOutgoingTotalFragments += dataStr.length;
+            totalDataSize += dataStr.length;
         }
+
+        Log.d("BluetoothHelper", "totalDataSize=" + totalDataSize + ",dataArray.size=" + dataArray.size());
 
         //  Find the total number of fragments needed to transmit the block
         //  based on the MTU size minus payload header.
-        mOutgoingTotalFragments = (mOutgoingTotalFragments + (mMaxBlockPayloadSize - 1)) / mMaxBlockPayloadSize;
+        mOutgoingTotalFragments = (int)Math.ceil(totalDataSize / (double)mMaxBlockPayloadSize);
 
-        Log.d("BluetoothHelper", "data.length=" + data.length() + ",outgoingTotalFragments=" + mOutgoingTotalFragments + ",maxBlockPayloadSize=" +  mMaxBlockPayloadSize);
+        Log.d("BluetoothHelper", "outgoingTotalFragments=" + mOutgoingTotalFragments + ",maxBlockPayloadSize=" +  mMaxBlockPayloadSize);
 
         /*  Send setup message.
             When the receiver is ready for data it will send a request for fragments.
@@ -526,9 +528,9 @@ public class BluetoothHelper {
 
         writeBuffer[0] = BT_TYPE_WRITE_SETUP << 4;
 
-        writeBuffer[1] = (byte) data.length();
-        writeBuffer[2] = (byte) (data.length() >> 8);
-        writeBuffer[3] = (byte) (data.length() >> 16);
+        writeBuffer[1] = (byte) totalDataSize;
+        writeBuffer[2] = (byte) (totalDataSize >> 8);
+        writeBuffer[3] = (byte) (totalDataSize >> 16);
 
 //        writeBuffer[4] = block->getOffset();
 //        writeBuffer[5] = block->getOffset() >> 8;

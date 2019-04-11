@@ -3,6 +3,7 @@ package com.example.myapplication.utils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * Created by Nic on 9/4/2014.
@@ -65,15 +66,21 @@ public class DataFormat {
      */
     public static ArrayList<byte[]> ToUTF8ByteArray(String tooLong){
         ArrayList<byte[]> bytes = new ArrayList<byte[]>();
-        String temp = "";
-        //20 is the max number of bytes that can be sent to ble device
-        while(tooLong.length() > MAX_LENGTH){
-            temp = tooLong.substring(0, Math.min(tooLong.length(), MAX_LENGTH));
-            bytes.add(temp.getBytes(StandardCharsets.UTF_8));
-            tooLong = tooLong.substring(temp.length(),tooLong.length());
-        }
-        bytes.add(tooLong.getBytes(StandardCharsets.UTF_8));
+        byte[] utf8Bytes = tooLong.getBytes(StandardCharsets.UTF_8);
 
+        int blocks = (int)Math.ceil(utf8Bytes.length / (double)MAX_LENGTH);
+        int start = 0;
+
+        for(int i = 0; i < blocks; i++) {
+            if(start + MAX_LENGTH > utf8Bytes.length) {
+                System.out.println(String.format("1)copy start:%d, to %d ", start, start + (utf8Bytes.length - start)));
+                bytes.add(Arrays.copyOfRange(utf8Bytes, start, start + (utf8Bytes.length - start)));
+            } else {
+                System.out.println(String.format("2)copy start:%d, to %d ", start, start + MAX_LENGTH));
+                bytes.add(Arrays.copyOfRange(utf8Bytes, start, start + MAX_LENGTH));
+            }
+            start += MAX_LENGTH;
+        }
         return bytes;
     }
 
